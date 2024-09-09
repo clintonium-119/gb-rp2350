@@ -1,6 +1,6 @@
 macro_rules! force_eval {
     ($e:expr) => {{
-        &$e
+        let _ = &$e;
     }};
 }
 
