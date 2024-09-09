@@ -4,11 +4,12 @@
 
 mod array_scaler;
 mod const_math;
-mod pio_dma_interface;
+
+mod dma_transfer;
 mod pio_interface;
+mod rp_hal;
 mod scaler;
 mod stream_display;
-mod rp_hal;
 use embedded_hal::digital::OutputPin;
 extern crate alloc;
 use alloc::vec::Vec;
@@ -18,15 +19,13 @@ use ili9341::{DisplaySize, DisplaySize240x320};
 // be linked)
 use panic_halt as _;
 
-use rp_hal::hal::pio::PIOExt;
 use rp_hal::hal::dma::DMAExt;
+use rp_hal::hal::pio::PIOExt;
 // Alias for our HAL crate
 use rp_hal::hal;
 
-
 // Some things we need
 use embedded_alloc::Heap;
-
 
 /// Tell the Boot ROM about our application
 #[link_section = ".start_block"]
@@ -145,7 +144,8 @@ fn main() -> ! {
             .as_mut_slice();
 
     let dma = pac.DMA.split(&mut pac.RESETS);
-    let mut streamer = stream_display::Streamer::new(3, 22, (6, 13), dma.ch0, dm_spare, spare);
+    //let mut streamer = stream_display::Streamer::new(3, 22, (6, 13), dma.ch0, dm_spare, spare);
+    let mut streamer = stream_display::Streamer::new(dma.ch0, dm_spare, spare);
 
     // Rectangle::with_center(Point::new(160, 120), Size::new(50, 50))
     //     .into_styled(PrimitiveStyle::with_stroke(Rgb565::CSS_ORANGE_RED, 30))
@@ -155,7 +155,6 @@ fn main() -> ! {
     led_pin.set_high().unwrap();
 
     loop {
-
         let display_iter = GameVideoIter::new(&mut gameboy);
         let mut scaler: scaler::ScreenScaler<
             144,
@@ -166,16 +165,11 @@ fn main() -> ! {
         > = scaler::ScreenScaler::new(display_iter);
         display = display
             .async_transfer_mode(0, 0, SCREEN_HEIGHT as u16, SCREEN_WIDTH as u16, |iface| {
-                let (sm, rs) = iface.free(&mut pio);
-
-                let (rs, sm) =
-                    streamer.stream::<SCREEN_WIDTH, _, _, _, _>(&mut pio, rs, sm, &mut scaler);
-
-                pio_interface::PioInterface::new(3, rs, &mut pio, sm, 22, (6, 13), endianess)
+                iface.transfer_16bit_mode(|sm| streamer.stream::<SCREEN_WIDTH, _, _>(sm, &mut scaler))
             })
             .unwrap();
 
-       // hal::arch::wfi();
+        // hal::arch::wfi();
     }
 }
 

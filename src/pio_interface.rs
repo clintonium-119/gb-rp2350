@@ -1,6 +1,6 @@
+use crate::rp_hal::hal;
 use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
 use embedded_hal::digital::OutputPin;
-use crate::rp_hal::hal;
 use hal::dma::HalfWord;
 use hal::pio::{PIOExt, PIO};
 use hal::pio::{Running, StateMachine, StateMachineIndex, Tx};
@@ -57,7 +57,7 @@ where
 
         let program_offset = video_program_installed.offset();
         let (mut video_sm, rx, vid_tx) =
-        hal::pio::PIOBuilder::from_installed_program(video_program_installed)
+            hal::pio::PIOBuilder::from_installed_program(video_program_installed)
                 .out_pins(pins.0, pins.1)
                 .side_set_pin_base(rw)
                 .out_shift_direction(hal::pio::ShiftDirection::Left)
@@ -65,8 +65,7 @@ where
                 .buffers(hal::pio::Buffers::OnlyTx)
                 .clock_divisor_fixed_point(clock_divider, 0)
                 .build(sm);
-        video_sm
-            .set_pindirs((pins.0..pins.1 + 1 as u8).map(|n| (n, hal::pio::PinDir::Output)));
+        video_sm.set_pindirs((pins.0..pins.1 + 1 as u8).map(|n| (n, hal::pio::PinDir::Output)));
         video_sm.set_pindirs([(rw, hal::pio::PinDir::Output)]);
 
         let labels = PIOLabelDefines {
@@ -106,6 +105,26 @@ where
             side_set: None,
         };
         self.sm.exec_instruction(instruction);
+    }
+
+    pub fn transfer_16bit_mode<F>(mut self, mut callback: F) -> Self
+    where
+        F: FnMut(Tx<(P, SM), HalfWord>) -> Tx<(P, SM), HalfWord>,
+    {
+        self.set_16bit_mode();
+        let interface = (callback)(self.tx);
+        self.tx = interface;
+        self
+    }
+
+    pub fn transfer_8bit_mode<F>(mut self, mut callback: F) -> Self
+    where
+        F: FnMut(Tx<(P, SM), HalfWord>) -> Tx<(P, SM), HalfWord>,
+    {
+        self.set_8bit_mode();
+        let interface = (callback)(self.tx);
+        self.tx = interface;
+        self
     }
 
     pub fn free(self, pio: &mut PIO<P>) -> (UninitStateMachine<(P, SM)>, RS) {
