@@ -3,8 +3,6 @@ use alloc::vec::Vec;
 
 use crate::const_math::ceilf;
 
-type CalcsType = u16;
-
 pub struct ScreenScaler<
     const IN_HEIGHT: usize,
     const IN_WIDTH: usize,
@@ -31,9 +29,9 @@ impl<
 where
     I: Iterator<Item = u16>,
 {
-    const WIDTH_CEIL_CALCS: [CalcsType; OUT_WIDTH] =
+    const WIDTH_CEIL_CALCS: [I::Item; OUT_WIDTH] =
         gen_ceil_array(OUT_WIDTH as f32 / IN_WIDTH as f32);
-    const HEIGHT_CEIL_CALCS: [CalcsType; OUT_HEIGHT] =
+    const HEIGHT_CEIL_CALCS: [I::Item; OUT_HEIGHT] =
         gen_ceil_array(OUT_HEIGHT as f32 / IN_HEIGHT as f32);
 
     pub fn new(iterator: I) -> Self {
@@ -111,13 +109,13 @@ where
     }
 }
 
-const fn gen_ceil_array<const N: usize>(ratio: f32) -> [CalcsType; N] {
-    let mut res = [0 as CalcsType; N];
+const fn gen_ceil_array<const N: usize>(ratio: f32) -> [u16; N] {
+    let mut res = [0 as u16; N];
 
     let mut i = 0;
 
     while i < N as i32 {
-        res[i as usize] = ceilf(ratio * i as f32) as CalcsType;
+        res[i as usize] = ceilf(ratio * i as f32) as u16;
         i += 1;
     }
 

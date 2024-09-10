@@ -6,8 +6,7 @@ use hal::pio::{PIOExt, PIO};
 use hal::pio::{Running, StateMachine, StateMachineIndex, Tx};
 use hal::pio::{Rx, UninitStateMachine};
 type Result = core::result::Result<(), DisplayError>;
-
-use defmt_rtt as _;
+use hal::dma::Byte;
 
 pub struct PioInterface<RS, P: PIOExt, SM: StateMachineIndex, END> {
     sm: StateMachine<(P, SM), Running>,
@@ -119,11 +118,11 @@ where
 
     pub fn transfer_8bit_mode<F>(mut self, mut callback: F) -> Self
     where
-        F: FnMut(Tx<(P, SM), HalfWord>) -> Tx<(P, SM), HalfWord>,
+        F: FnMut(Tx<(P, SM), Byte>) -> Tx<(P, SM), Byte>,
     {
         self.set_8bit_mode();
-        let interface = (callback)(self.tx);
-        self.tx = interface;
+        let interface = (callback)(self.tx.transfer_size(Byte));
+        self.tx = interface.transfer_size(HalfWord);
         self
     }
 

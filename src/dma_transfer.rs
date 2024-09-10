@@ -1,12 +1,11 @@
-
 use crate::rp_hal::hal;
+use crate::array_scaler::LineTransfer;
 
 use hal::dma::{
     single_buffer::{Config, Transfer},
     ReadTarget, SingleChannel, WriteTarget,
 };
 
-use crate::array_scaler::LineTransfer;
 
 enum DmaState<
     CH: SingleChannel,
@@ -26,21 +25,16 @@ where
     CH: SingleChannel,
     TO: WriteTarget<TransmittedWord = u16>,
 {
-
     pub fn new(dma_channel: CH, tx: TO, buffer: &'static mut [u16]) -> Self {
         Self {
-            dma: (Some(DmaState::IDLE(
-                dma_channel,
-                buffer,
-                tx,
-            )))
+            dma: (Some(DmaState::IDLE(dma_channel, buffer, tx))),
         }
     }
 
     pub fn do_tranfer(&mut self, buffer: &'static mut [u16]) -> &'static mut [u16] {
-        let foo = core::mem::replace(&mut self.dma, None).unwrap();
+        let dma_state = core::mem::replace(&mut self.dma, None).unwrap();
 
-        let (ch, old_buffer, tx) = match foo {
+        let (ch, old_buffer, tx) = match dma_state {
             DmaState::IDLE(ch, buff, tx) => (ch, buff, tx),
             DmaState::RUNNING(dma) => dma.wait(),
         };

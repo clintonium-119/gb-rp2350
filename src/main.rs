@@ -106,7 +106,7 @@ fn main() -> ! {
         }
     };
 
-    let mut interface =
+    let interface =
         pio_interface::PioInterface::new(3, rs, &mut pio, sm0, 22, (6, 13), endianess);
 
     let mut display = ili9341::Ili9341::new_orig(
@@ -144,13 +144,8 @@ fn main() -> ! {
             .as_mut_slice();
 
     let dma = pac.DMA.split(&mut pac.RESETS);
-    //let mut streamer = stream_display::Streamer::new(3, 22, (6, 13), dma.ch0, dm_spare, spare);
-    let mut streamer = stream_display::Streamer::new(dma.ch0, dm_spare, spare);
 
-    // Rectangle::with_center(Point::new(160, 120), Size::new(50, 50))
-    //     .into_styled(PrimitiveStyle::with_stroke(Rgb565::CSS_ORANGE_RED, 30))
-    //     .draw(&mut display)
-    //     .unwrap();
+    let mut streamer = stream_display::Streamer::new(dma.ch0, dm_spare, spare);
 
     led_pin.set_high().unwrap();
 
@@ -168,8 +163,6 @@ fn main() -> ! {
                 iface.transfer_16bit_mode(|sm| streamer.stream::<SCREEN_WIDTH, _, _>(sm, &mut scaler))
             })
             .unwrap();
-
-        // hal::arch::wfi();
     }
 }
 

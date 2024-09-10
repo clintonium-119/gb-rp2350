@@ -1,5 +1,3 @@
-//New Scaler
-
 pub struct ScreenHandler<'a, const OUT_WIDTH: usize, T: LineTransfer, I: Iterator<Item = u16>> {
     iterator: &'a mut I,
     scaled_scan_line_buffer: &'static mut [u16],
