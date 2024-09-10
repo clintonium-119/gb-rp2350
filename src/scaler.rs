@@ -16,7 +16,6 @@ pub struct ScreenScaler<
     scaled_scan_line_buffer: Vec<u16>,
     scaled_line_buffer_repeat: u16,
     current_scaled_line_index: u16,
-    last_x_position: u16,
 }
 
 impl<
@@ -42,7 +41,6 @@ where
             scaled_scan_line_buffer: alloc::vec![0; OUT_WIDTH],
             scaled_line_buffer_repeat: 0,
             current_scaled_line_index: 0,
-            last_x_position: 0,
         }
     }
 }
@@ -75,6 +73,7 @@ where
             }
 
             //Collect all pixes from a scan line
+            let mut next_x_position = 0;
             for count in 0..IN_WIDTH {
                 let pixel = self.iterator.next();
                 if pixel.is_none() {
@@ -82,12 +81,11 @@ where
                 }
 
                 let last_pixel = Self::WIDTH_CEIL_CALCS[count] as u16;
-                self.scaled_scan_line_buffer[(self.last_x_position as usize)..last_pixel as usize]
+                self.scaled_scan_line_buffer[(next_x_position as usize)..last_pixel as usize]
                     .fill(pixel.unwrap());
 
-                self.last_x_position = last_pixel;
+                next_x_position = last_pixel;
             }
-            self.last_x_position = 0;
 
             //Calculate y position of the next scan line
             let next_scan_line_start =
