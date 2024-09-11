@@ -1,9 +1,7 @@
 #![no_std]
 #![no_main]
-#![feature(const_float_bits_conv)]
-
 mod array_scaler;
-mod const_math;
+
 
 mod dma_transfer;
 mod pio_interface;
@@ -43,7 +41,7 @@ static ALLOCATOR: Heap = Heap::empty();
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 131000;
+        const HEAP_SIZE: usize = 331000;
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -81,7 +79,7 @@ fn main() -> ! {
     let reset = pins.gpio2.into_push_pull_output();
     let mut cs = pins.gpio17.into_push_pull_output();
     let rs = pins.gpio28.into_push_pull_output();
-    let _rw = pins.gpio22.into_function::<hal::gpio::FunctionPio0>();
+    let rw = pins.gpio22.into_function::<hal::gpio::FunctionPio0>();
 
     let mut rd = pins.gpio16.into_push_pull_output();
 
@@ -107,7 +105,7 @@ fn main() -> ! {
     };
 
     let interface =
-        pio_interface::PioInterface::new(3, rs, &mut pio, sm0, 22, (6, 13), endianess);
+        pio_interface::PioInterface::new(1, rs, &mut pio, sm0, rw.id().num, (6, 13), endianess);
 
     let mut display = ili9341::Ili9341::new_orig(
         interface,
@@ -128,10 +126,12 @@ fn main() -> ! {
     let screen = GameboyLineBufferDisplay::new();
     let mut gameboy = GameBoy::create(screen, cart, boot_rom);
 
+
     const SCREEN_WIDTH: usize =
-        const_math::floorf(<DisplaySize240x320 as DisplaySize>::WIDTH as f32 / 1.0f32) as usize;
+        (<DisplaySize240x320 as DisplaySize>::WIDTH as f32 / 1.0f32) as usize;
     const SCREEN_HEIGHT: usize =
-        const_math::floorf(<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
+        (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
+
 
     let spare: &'static mut [u16] =
         cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH ])
@@ -145,22 +145,20 @@ fn main() -> ! {
 
     let dma = pac.DMA.split(&mut pac.RESETS);
 
-    let mut streamer = stream_display::Streamer::new(dma.ch0, dm_spare, spare);
 
+    let mut streamer = stream_display::Streamer::new(dma.ch0, dm_spare, spare);
+    let scaler: scaler::ScreenScaler<144, 160, { SCREEN_WIDTH }, { SCREEN_HEIGHT }> =
+        scaler::ScreenScaler::new();
     led_pin.set_high().unwrap();
 
     loop {
-        let display_iter = GameVideoIter::new(&mut gameboy);
-        let mut scaler: scaler::ScreenScaler<
-            144,
-            160,
-            { SCREEN_WIDTH },
-            { SCREEN_HEIGHT },
-            GameVideoIter,
-        > = scaler::ScreenScaler::new(display_iter);
+        let mut dis = scaler.clone();
         display = display
             .async_transfer_mode(0, 0, SCREEN_HEIGHT as u16, SCREEN_WIDTH as u16, |iface| {
-                iface.transfer_16bit_mode(|sm| streamer.stream::<SCREEN_WIDTH, _, _>(sm, &mut scaler))
+                iface.transfer_16bit_mode(|sm| {
+                    let display_iter = GameVideoIter::new(&mut gameboy);
+                    streamer.stream::<SCREEN_WIDTH, _, _>(sm, &mut dis.scale_iterator(display_iter))
+                })
             })
             .unwrap();
     }
