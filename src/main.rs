@@ -135,12 +135,12 @@ fn main() -> ! {
 
 
     let spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * SCREEN_HEIGHT ])
             .unwrap()
             .as_mut_slice();
 
     let dm_spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * SCREEN_HEIGHT ])
             .unwrap()
             .as_mut_slice();
 
@@ -158,7 +158,7 @@ fn main() -> ! {
             .async_transfer_mode(0, 0, SCREEN_HEIGHT as u16, SCREEN_WIDTH as u16, |iface| {
                 iface.transfer_16bit_mode(|sm| {
                     let display_iter = GameVideoIter::new(&mut gameboy);
-                    streamer.stream::<SCREEN_WIDTH, _, _>(sm, &mut dis.scale_iterator(display_iter))
+                    streamer.stream::<_, _>(sm, &mut dis.scale_iterator(display_iter))
                 })
             })
             .unwrap();
@@ -233,7 +233,6 @@ impl Screen for GameboyLineBufferDisplay {
         let encoded_color = ((color.red as u16 & 0b11111000) << 8)
             + ((color.green as u16 & 0b11111100) << 3)
             + (color.blue as u16 >> 3);
-
         self.line_buffer[x as usize] = encoded_color;
     }
     fn scanline_complete(&mut self, _y: u8, _skip: bool) {
