@@ -8,6 +8,7 @@ mod pio_interface;
 mod rp_hal;
 mod scaler;
 mod stream_display;
+use alloc::boxed::Box;
 use embedded_hal::digital::OutputPin;
 extern crate alloc;
 use alloc::vec::Vec;
@@ -204,7 +205,7 @@ impl<'a> Iterator for GameVideoIter<'a> {
 }
 
 struct GameboyLineBufferDisplay {
-    line_buffer: Vec<u16>,
+    line_buffer: Box<[u16; 160]>,
     line_complete: bool,
     turn_off: bool,
 }
@@ -212,7 +213,7 @@ struct GameboyLineBufferDisplay {
 impl GameboyLineBufferDisplay {
     fn new() -> Self {
         Self {
-            line_buffer: alloc::vec![0; 160],
+            line_buffer: Box::new([0; 160]),
             line_complete: false,
             turn_off: false,
         }
