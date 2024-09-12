@@ -60,7 +60,8 @@ where
     CH: SingleChannel,
     TO: WriteTarget<TransmittedWord = u16>,
 {
-    fn send_scanline(&mut self, line: &'static mut [u16]) -> &'static mut [u16] {
+    type Item = u16;
+    fn send_scanline(&mut self, line: &'static mut [Self::Item]) -> &'static mut [Self::Item] {
         self.do_tranfer(line)
     }
 }

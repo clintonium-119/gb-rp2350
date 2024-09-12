@@ -38,7 +38,7 @@ where
         let main_buffer = core::mem::replace(&mut self.main_buffer, None).unwrap();
         let stream = dma_transfer::DmaTransfer::new(channel, tx, main_buffer);
 
-        let sh: ScreenHandler<_, _> = ScreenHandler::new(iterator, stream, spare_buffer);
+        let sh: ScreenHandler<u16,_, _> = ScreenHandler::new(iterator, stream, spare_buffer);
         let (stream, spare_buffer) = sh.compute_line();
 
         let (channel, sm, main_buffer) = stream.free();
