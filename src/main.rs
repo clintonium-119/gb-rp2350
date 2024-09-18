@@ -50,7 +50,7 @@ static ALLOCATOR: Heap = Heap::empty();
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 331000;
+        const HEAP_SIZE: usize = 450_000;
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -169,7 +169,7 @@ fn main() -> ! {
     ));
     core::mem::drop(boot_rom_data);
     let screen = GameboyLineBufferDisplay::new();
-    let mut gameboy = GameBoy::create(screen, cartridge, boot_rom);
+    let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(gameboy::audio::NullAudioPlayer));
 
     
     const SCREEN_WIDTH: usize =
