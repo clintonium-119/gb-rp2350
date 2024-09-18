@@ -8,16 +8,23 @@ mod pio_interface;
 mod rp_hal;
 mod scaler;
 mod stream_display;
-use alloc::boxed::Box;
+mod spi_device;
+mod gameboy;
+mod sdcard;
+
 use embedded_hal::digital::OutputPin;
 extern crate alloc;
 use alloc::vec::Vec;
-use gb_core::{gameboy::GameBoy, hardware::Screen};
+use embedded_sdmmc::{SdCard, VolumeManager};
+use gameboy::display::{GameVideoIter, GameboyLineBufferDisplay};
+use gb_core::gameboy::GameBoy;
 use ili9341::{DisplaySize, DisplaySize240x320};
+use hal::fugit::RateExtU32;
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
 use panic_halt as _;
 
+use rp235x_hal::{spi, Clock};
 use rp_hal::hal::dma::DMAExt;
 use rp_hal::hal::pio::PIOExt;
 // Alias for our HAL crate
@@ -78,11 +85,10 @@ fn main() -> ! {
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
     let reset = pins.gpio2.into_push_pull_output();
-    let mut cs = pins.gpio17.into_push_pull_output();
+    let mut cs = pins.gpio27.into_push_pull_output();
     let rs = pins.gpio28.into_push_pull_output();
     let rw = pins.gpio22.into_function::<hal::gpio::FunctionPio0>();
-
-    let mut rd = pins.gpio16.into_push_pull_output();
+    let mut rd = pins.gpio26.into_push_pull_output();
 
     let _ = pins.gpio6.into_function::<hal::gpio::FunctionPio0>();
     let _ = pins.gpio7.into_function::<hal::gpio::FunctionPio0>();
@@ -97,13 +103,42 @@ fn main() -> ! {
     rd.set_high().unwrap();
     cs.set_low().unwrap();
 
-    let endianess = |be: bool, val: u16| {
-        if be {
-            val.to_le()
-        } else {
-            val.to_be()
-        }
-    };
+
+    ///////////////////////////////SD CARD
+    let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio18.into_function::<hal::gpio::FunctionSpi>();
+    let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio19.into_function::<hal::gpio::FunctionSpi>();
+    let spi_cs = pins.gpio17.into_push_pull_output();
+    let spi_miso: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio16.into_function::<hal::gpio::FunctionSpi>();
+  
+
+    // Create the SPI driver instance for the SPI0 device
+    let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI0, (spi_mosi, spi_miso, spi_sclk));
+    let spi = spi.init(
+        &mut pac.RESETS,
+        clocks.peripheral_clock.freq(),
+        400.kHz(),
+        embedded_hal::spi::MODE_0,
+    );
+    let exclusive_spi = spi_device::ExclusiveDevice::new(spi, spi_cs, timer).unwrap();
+    let sdcard = SdCard::new(exclusive_spi, timer);
+    let mut volume_mgr = VolumeManager::new(sdcard, sdcard::DummyTimesource::default());
+
+    let mut volume0 = volume_mgr
+        .open_volume(embedded_sdmmc::VolumeIdx(0))
+        .unwrap();
+    let mut root_dir = volume0.open_root_dir().unwrap();
+    let rom_file = root_dir
+        .open_file_in_dir("sml.gb", embedded_sdmmc::Mode::ReadOnly)
+        .unwrap();
+    
+    let roms = gameboy::rom::SdRomManager::new(rom_file);
+    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
+    let cartridge = gb_rom.into_cartridge();
+    
+    ///////////////////////////////
 
     let interface =
         pio_interface::PioInterface::new(1, rs, &mut pio, sm0, rw.id().num, (6, 13), endianess);
@@ -112,140 +147,65 @@ fn main() -> ! {
         interface,
         reset,
         &mut timer,
-        ili9341::Orientation::LandscapeFlipped,
+        ili9341::Orientation::Landscape,
         ili9341::DisplaySize240x320,
     )
     .unwrap();
 
-    let gb_rom = load_rom_from_path();
-    let cart = gb_rom.into_cartridge();
+
     let boot_rom = gb_core::hardware::boot_rom::Bootrom::new(Some(
         gb_core::hardware::boot_rom::BootromData::from_bytes(include_bytes!(
             "C:\\roms\\dmg_boot.bin"
         )),
     ));
     let screen = GameboyLineBufferDisplay::new();
-    let mut gameboy = GameBoy::create(screen, cart, boot_rom);
+    let mut gameboy = GameBoy::create(screen, cartridge, boot_rom);
 
-
+    
     const SCREEN_WIDTH: usize =
         (<DisplaySize240x320 as DisplaySize>::WIDTH as f32 / 1.0f32) as usize;
     const SCREEN_HEIGHT: usize =
         (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
 
-
+       
     let spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * SCREEN_HEIGHT ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH ])
             .unwrap()
             .as_mut_slice();
 
     let dm_spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * SCREEN_HEIGHT ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH ])
             .unwrap()
             .as_mut_slice();
 
     let dma = pac.DMA.split(&mut pac.RESETS);
 
-
+    
     let mut streamer = stream_display::Streamer::new(dma.ch0, dm_spare, spare);
     let scaler: scaler::ScreenScaler<144, 160, { SCREEN_WIDTH }, { SCREEN_HEIGHT }> =
         scaler::ScreenScaler::new();
     led_pin.set_high().unwrap();
-
     loop {
-        let mut dis = scaler.clone();
         display = display
-            .async_transfer_mode(0, 0, SCREEN_HEIGHT as u16, SCREEN_WIDTH as u16, |iface| {
+        .async_transfer_mode(
+            0,
+            0,
+            (SCREEN_HEIGHT - 1) as u16,
+            (SCREEN_WIDTH - 1) as u16,
+            |iface| {
                 iface.transfer_16bit_mode(|sm| {
-                    let display_iter = GameVideoIter::new(&mut gameboy);
-                    streamer.stream::<_, _>(sm, &mut dis.scale_iterator(display_iter))
+                    streamer.stream::<_, _>(
+                        sm,
+                        &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
+                    )
                 })
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
     }
 }
 
-pub struct GameVideoIter<'a> {
-    gameboy: &'a mut GameBoy<GameboyLineBufferDisplay>,
-    current_line_index: usize,
-}
-impl<'a> GameVideoIter<'a> {
-    fn new(gameboy: &'a mut GameBoy<GameboyLineBufferDisplay>) -> Self {
-        Self {
-            gameboy: gameboy,
-            current_line_index: 0,
-        }
-    }
-}
 
-impl<'a> Iterator for GameVideoIter<'a> {
-    type Item = u16;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.gameboy.get_screen().turn_off {
-                self.gameboy.get_screen().turn_off = false;
-                return None;
-            }
-            if self.gameboy.get_screen().line_complete {
-                let pixel = self.gameboy.get_screen().line_buffer[self.current_line_index];
-                if self.current_line_index + 1 >= 160 {
-                    self.current_line_index = 0;
-                    self.gameboy.get_screen().line_complete = false;
-                } else {
-                    self.current_line_index = self.current_line_index + 1;
-                }
-
-                return Some(pixel);
-            } else {
-                self.gameboy.tick();
-            }
-        }
-    }
-}
-
-struct GameboyLineBufferDisplay {
-    line_buffer: Box<[u16; 160]>,
-    line_complete: bool,
-    turn_off: bool,
-}
-
-impl GameboyLineBufferDisplay {
-    fn new() -> Self {
-        Self {
-            line_buffer: Box::new([0; 160]),
-            line_complete: false,
-            turn_off: false,
-        }
-    }
-}
-
-impl Screen for GameboyLineBufferDisplay {
-    fn turn_on(&mut self) {
-        self.turn_off = true;
-    }
-
-    fn turn_off(&mut self) {
-        //todo!()
-    }
-
-    fn set_pixel(&mut self, x: u8, _y: u8, color: gb_core::hardware::color_palette::Color) {
-        let encoded_color = ((color.red as u16 & 0b11111000) << 8)
-            + ((color.green as u16 & 0b11111100) << 3)
-            + (color.blue as u16 >> 3);
-        self.line_buffer[x as usize] = encoded_color;
-    }
-    fn scanline_complete(&mut self, _y: u8, _skip: bool) {
-        self.line_complete = true;
-    }
-
-    fn draw(&mut self, _: bool) {}
-}
-
-pub fn load_rom_from_path() -> gb_core::hardware::rom::Rom<'static> {
-    let rom_f = include_bytes!("C:\\roms\\tetris.gb");
-    gb_core::hardware::rom::Rom::from_bytes(rom_f)
-}
 
 /// Program metadata for `picotool info`
 #[link_section = ".bi_entries"]
@@ -257,3 +217,13 @@ pub static PICOTOOL_ENTRIES: [hal::binary_info::EntryAddr; 5] = [
     hal::binary_info::rp_cargo_homepage_url!(),
     hal::binary_info::rp_program_build_attribute!(),
 ];
+
+
+#[inline(always)]
+const fn endianess(be: bool, val: u16) -> u16 {
+    if be {
+        val.to_le()
+    } else {
+        val.to_be()
+    }
+}

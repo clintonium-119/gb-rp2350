@@ -35,6 +35,8 @@ embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
 embedded-dma = "0.2.0"
 embedded_hal_0_2 = {package = "embedded-hal", version = "0.2.5", features = ["unproven"]}
+embedded-sdmmc = "0.8.0"
+const-lru = "1.0.0"
 fugit = "0.3.6"
 futures = {version = "0.3.30", default-features = false, features = ["async-await"]}
 hd44780-driver = "0.4.0"
