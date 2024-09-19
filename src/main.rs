@@ -8,7 +8,6 @@ mod pio_interface;
 mod rp_hal;
 mod scaler;
 mod stream_display;
-mod spi_device;
 mod gameboy;
 mod sdcard;
 
@@ -123,7 +122,7 @@ fn main() -> ! {
         400.kHz(),
         embedded_hal::spi::MODE_0,
     );
-    let exclusive_spi = spi_device::ExclusiveDevice::new(spi, spi_cs, timer).unwrap();
+    let exclusive_spi = embedded_hal_bus::spi::ExclusiveDevice::new(spi, spi_cs, timer).unwrap();
     let sdcard = SdCard::new(exclusive_spi, timer);
     let mut volume_mgr = VolumeManager::new(sdcard, sdcard::DummyTimesource::default());
 
