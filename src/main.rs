@@ -87,7 +87,7 @@ fn main() -> ! {
     let reset = pins.gpio2.into_push_pull_output();
     let mut cs = pins.gpio27.into_push_pull_output();
     let rs = pins.gpio28.into_push_pull_output();
-    let rw = pins.gpio22.into_function::<hal::gpio::FunctionPio0>();
+    let rw = pins.gpio22.into_function::<hal::gpio::FunctionPio0>(); //AKA DC
     let mut rd = pins.gpio26.into_push_pull_output();
 
     let _ = pins.gpio3.into_function::<hal::gpio::FunctionPio0>();
@@ -108,10 +108,10 @@ fn main() -> ! {
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
         pins.gpio18.into_function::<hal::gpio::FunctionSpi>();
     let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio19.into_function::<hal::gpio::FunctionSpi>();
+        pins.gpio19.into_function::<hal::gpio::FunctionSpi>(); //tx
     let spi_cs = pins.gpio17.into_push_pull_output();
     let spi_miso: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio16.into_function::<hal::gpio::FunctionSpi>();
+        pins.gpio16.into_function::<hal::gpio::FunctionSpi>(); //rx
   
 
     // Create the SPI driver instance for the SPI0 device
@@ -203,9 +203,10 @@ fn main() -> ! {
             (SCREEN_WIDTH - 1) as u16,
             |iface| {
                 iface.transfer_16bit_mode(|sm| {
-                    streamer.stream::<_, _>(
+                    streamer.stream::<_, _, _, _, 1>(
                         sm,
                         &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
+                        |d| [d],
                     )
                 })
             },
