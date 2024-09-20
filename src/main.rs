@@ -2,14 +2,16 @@
 #![no_main]
 mod array_scaler;
 
-
 mod dma_transfer;
+mod gameboy;
 mod pio_interface;
 mod rp_hal;
 mod scaler;
-mod stream_display;
-mod gameboy;
 mod sdcard;
+mod spi_device;
+mod stream_display;
+mod util;
+mod clocks;
 
 use alloc::boxed::Box;
 use embedded_hal::digital::OutputPin;
@@ -18,8 +20,8 @@ use alloc::vec::Vec;
 use embedded_sdmmc::{SdCard, VolumeManager};
 use gameboy::display::{GameVideoIter, GameboyLineBufferDisplay};
 use gb_core::gameboy::GameBoy;
-use ili9341::{DisplaySize, DisplaySize240x320};
 use hal::fugit::RateExtU32;
+use ili9341::{DisplaySize, DisplaySize240x320};
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
 use panic_halt as _;
@@ -32,6 +34,7 @@ use rp_hal::hal;
 
 // Some things we need
 use embedded_alloc::Heap;
+use util::DummyOutputPin;
 
 /// Tell the Boot ROM about our application
 #[link_section = ".start_block"]
@@ -49,19 +52,24 @@ static ALLOCATOR: Heap = Heap::empty();
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 450_000;
+        const HEAP_SIZE: usize = 470_000;
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
 
+    
     // Grab our singleton objects
     let mut pac = hal::pac::Peripherals::take().unwrap();
 
     // Set up the watchdog driver - needed by the clock setup code
     let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
 
-    // Configure the clocks
-    let clocks = hal::clocks::init_clocks_and_plls(
+    pac.POWMAN
+    .vreg()
+    .write(|w| unsafe { w.vsel().bits(0b01111) }); //1.3v
+
+
+    let clocks = clocks::configure_overclock(
         XTAL_FREQ_HZ,
         pac.XOSC,
         pac.CLOCKS,
@@ -69,8 +77,7 @@ fn main() -> ! {
         pac.PLL_USB,
         &mut pac.RESETS,
         &mut watchdog,
-    )
-    .unwrap();
+    ).unwrap();
 
     let mut timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
     let sio = hal::Sio::new(pac.SIO);
@@ -84,11 +91,8 @@ fn main() -> ! {
 
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
-    let reset = pins.gpio2.into_push_pull_output();
-    let mut cs = pins.gpio27.into_push_pull_output();
     let rs = pins.gpio28.into_push_pull_output();
     let rw = pins.gpio22.into_function::<hal::gpio::FunctionPio0>(); //AKA DC
-    let mut rd = pins.gpio26.into_push_pull_output();
 
     let _ = pins.gpio3.into_function::<hal::gpio::FunctionPio0>();
     let _ = pins.gpio4.into_function::<hal::gpio::FunctionPio0>();
@@ -100,9 +104,6 @@ fn main() -> ! {
     let _ = pins.gpio10.into_function::<hal::gpio::FunctionPio0>();
 
     let (mut pio, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
-    rd.set_high().unwrap();
-    cs.set_low().unwrap();
-
 
     ///////////////////////////////SD CARD
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
@@ -112,7 +113,6 @@ fn main() -> ! {
     let spi_cs = pins.gpio17.into_push_pull_output();
     let spi_miso: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
         pins.gpio16.into_function::<hal::gpio::FunctionSpi>(); //rx
-  
 
     // Create the SPI driver instance for the SPI0 device
     let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI0, (spi_mosi, spi_miso, spi_sclk));
@@ -138,84 +138,114 @@ fn main() -> ! {
     let mut boot_rom_data = Box::new([0u8; 0x100]);
     boot_rom_file.read(&mut *boot_rom_data).unwrap();
     boot_rom_file.close().unwrap();
-    
+
     let rom_file = root_dir
         .open_file_in_dir("sml.gb", embedded_sdmmc::Mode::ReadOnly)
         .unwrap();
-    
+
     let roms = gameboy::rom::SdRomManager::new(rom_file);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
     let cartridge = gb_rom.into_cartridge();
-    
-    ///////////////////////////////
 
+    ///////////////////////////////
+    let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio14.into_function::<hal::gpio::FunctionSpi>();
+    let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio15.into_function::<hal::gpio::FunctionSpi>(); //tx
+    let mut spi_cs = pins.gpio13.into_push_pull_output();
+    let spi_miso: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio12.into_function::<hal::gpio::FunctionSpi>(); //rx
+    let spi_screen = spi::Spi::<_, _, _, 8>::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk));
+    let screen_dc: hal::gpio::Pin<
+        hal::gpio::bank0::Gpio11,
+        hal::gpio::FunctionSio<hal::gpio::SioOutput>,
+        hal::gpio::PullDown,
+    > = pins.gpio11.into_push_pull_output();
+    let spi_screen = spi_screen.init(
+        &mut pac.RESETS,
+        clocks.peripheral_clock.freq(),
+        80.MHz(), // card initialization happens at low baud rate
+        embedded_hal::spi::MODE_0,
+    );
+    spi_cs.set_low().unwrap();
+    let exclusive_screen_spi = spi_device::ExclusiveDevice::new(spi_screen, spi_cs, timer).unwrap();
+    let spi_display_interface =
+        display_interface_spi::SPIInterface::new(exclusive_screen_spi, screen_dc);
+    /////////////
     let interface =
         pio_interface::PioInterface::new(1, rs, &mut pio, sm0, rw.id().num, (3, 10), endianess);
 
     let mut display = ili9341::Ili9341::new_orig(
-        interface,
-        reset,
+        spi_display_interface,
+        DummyOutputPin,
         &mut timer,
         ili9341::Orientation::Landscape,
         ili9341::DisplaySize240x320,
     )
     .unwrap();
 
-
-
     let boot_rom = gb_core::hardware::boot_rom::Bootrom::new(Some(
         gb_core::hardware::boot_rom::BootromData::from_bytes(&*boot_rom_data),
     ));
     core::mem::drop(boot_rom_data);
     let screen = GameboyLineBufferDisplay::new();
-    let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(gameboy::audio::NullAudioPlayer));
+    let mut gameboy = GameBoy::create(
+        screen,
+        cartridge,
+        boot_rom,
+        Box::new(gameboy::audio::NullAudioPlayer),
+    );
 
-    
     const SCREEN_WIDTH: usize =
         (<DisplaySize240x320 as DisplaySize>::WIDTH as f32 / 1.0f32) as usize;
     const SCREEN_HEIGHT: usize =
         (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
 
-       
-    let spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH ])
+    let spare: &'static mut [u8] =
+        cortex_m::singleton!(: Vec<u8>  = alloc::vec![0; (SCREEN_WIDTH * SCREEN_HEIGHT) * 2 ])
             .unwrap()
             .as_mut_slice();
 
-    let dm_spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH ])
+    let dm_spare: &'static mut [u8] =
+        cortex_m::singleton!(: Vec<u8>  = alloc::vec![0; (SCREEN_WIDTH * SCREEN_HEIGHT) * 2 ])
             .unwrap()
             .as_mut_slice();
 
     let dma = pac.DMA.split(&mut pac.RESETS);
 
-    
     let mut streamer = stream_display::Streamer::new(dma.ch0, dm_spare, spare);
     let scaler: scaler::ScreenScaler<144, 160, { SCREEN_WIDTH }, { SCREEN_HEIGHT }> =
         scaler::ScreenScaler::new();
     led_pin.set_high().unwrap();
     loop {
         display = display
-        .async_transfer_mode(
-            0,
-            0,
-            (SCREEN_HEIGHT - 1) as u16,
-            (SCREEN_WIDTH - 1) as u16,
-            |iface| {
-                iface.transfer_16bit_mode(|sm| {
-                    streamer.stream::<_, _, _, _, 1>(
-                        sm,
-                        &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
-                        |d| [d],
-                    )
-                })
-            },
-        )
-        .unwrap();
+            .async_transfer_mode(
+                0,
+                0,
+                (SCREEN_HEIGHT - 1) as u16,
+                (SCREEN_WIDTH - 1) as u16,
+                |iface| {
+                    let (mut sp, dc) = iface.release();
+                    sp = sp.share_bus(|bus| {
+                        streamer.stream::<_, _, _, _, 2>(
+                            bus,
+                            &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
+                            |d| d.to_be_bytes(),
+                        )
+                    });
+                    display_interface_spi::SPIInterface::new(sp, dc)
+                    // iface.transfer_16bit_mode(|sm| {
+                    //     streamer.stream::<_, _, _, _, 1>(
+                    //         sm,
+                    //         &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
+                    //         |d| [d],
+                    //     )
+                    // })
+                },
+            )
+            .unwrap();
     }
 }
-
-
 
 /// Program metadata for `picotool info`
 #[link_section = ".bi_entries"]
@@ -227,7 +257,6 @@ pub static PICOTOOL_ENTRIES: [hal::binary_info::EntryAddr; 5] = [
     hal::binary_info::rp_cargo_homepage_url!(),
     hal::binary_info::rp_program_build_attribute!(),
 ];
-
 
 #[inline(always)]
 const fn endianess(be: bool, val: u16) -> u16 {
