@@ -57,7 +57,7 @@ where
         let program_offset = video_program_installed.offset();
         let (mut video_sm, rx, vid_tx) =
             hal::pio::PIOBuilder::from_installed_program(video_program_installed)
-                .out_pins(pins.0, pins.1)
+                .out_pins(pins.0, (1 - pins.0) + pins.1)
                 .side_set_pin_base(rw)
                 .out_shift_direction(hal::pio::ShiftDirection::Left)
                 .in_shift_direction(hal::pio::ShiftDirection::Left)
