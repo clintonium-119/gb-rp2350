@@ -92,7 +92,7 @@ fn main() -> ! {
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
     let rs = pins.gpio28.into_push_pull_output();
-    let rw = pins.gpio22.into_function::<hal::gpio::FunctionPio0>(); //AKA DC
+    let rw = pins.gpio27.into_function::<hal::gpio::FunctionPio0>(); //AKA DC
 
     let _ = pins.gpio3.into_function::<hal::gpio::FunctionPio0>();
     let _ = pins.gpio4.into_function::<hal::gpio::FunctionPio0>();
