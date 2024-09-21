@@ -77,7 +77,7 @@ fn main() -> ! {
         pac.PLL_USB,
         &mut pac.RESETS,
         &mut watchdog,
-    ).unwrap();
+    ).ok().unwrap();
 
     let mut timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
     let sio = hal::Sio::new(pac.SIO);
@@ -173,10 +173,10 @@ fn main() -> ! {
         display_interface_spi::SPIInterface::new(exclusive_screen_spi, screen_dc);
     /////////////
     let interface =
-        pio_interface::PioInterface::new(1, rs, &mut pio, sm0, rw.id().num, (3, 10), endianess);
+        pio_interface::PioInterface::new(2, rs, &mut pio, sm0, rw.id().num, (3, 10), endianess);
 
     let mut display = ili9341::Ili9341::new_orig(
-        spi_display_interface,
+        interface,
         DummyOutputPin,
         &mut timer,
         ili9341::Orientation::Landscape,
@@ -201,13 +201,13 @@ fn main() -> ! {
     const SCREEN_HEIGHT: usize =
         (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
 
-    let spare: &'static mut [u8] =
-        cortex_m::singleton!(: Vec<u8>  = alloc::vec![0; (SCREEN_WIDTH * SCREEN_HEIGHT) * 2 ])
+    let spare: &'static mut [u16] =
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; (SCREEN_WIDTH ) * 1 ])
             .unwrap()
             .as_mut_slice();
 
-    let dm_spare: &'static mut [u8] =
-        cortex_m::singleton!(: Vec<u8>  = alloc::vec![0; (SCREEN_WIDTH * SCREEN_HEIGHT) * 2 ])
+    let dm_spare: &'static mut [u16] =
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; (SCREEN_WIDTH) * 1 ])
             .unwrap()
             .as_mut_slice();
 
@@ -225,22 +225,22 @@ fn main() -> ! {
                 (SCREEN_HEIGHT - 1) as u16,
                 (SCREEN_WIDTH - 1) as u16,
                 |iface| {
-                    let (mut sp, dc) = iface.release();
-                    sp = sp.share_bus(|bus| {
-                        streamer.stream::<_, _, _, _, 2>(
-                            bus,
-                            &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
-                            |d| d.to_be_bytes(),
-                        )
-                    });
-                    display_interface_spi::SPIInterface::new(sp, dc)
-                    // iface.transfer_16bit_mode(|sm| {
-                    //     streamer.stream::<_, _, _, _, 1>(
-                    //         sm,
+                    // let (mut sp, dc) = iface.release();
+                    // sp = sp.share_bus(|bus| {
+                    //     streamer.stream::<_, _, _, _, 2>(
+                    //         bus,
                     //         &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
-                    //         |d| [d],
+                    //         |d| d.to_be_bytes(),
                     //     )
-                    // })
+                    // });
+                    // display_interface_spi::SPIInterface::new(sp, dc)
+                    iface.transfer_16bit_mode(|sm| {
+                        streamer.stream::<_, _, _, _, 1>(
+                            sm,
+                            &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
+                            |d| [d],
+                        )
+                    })
                 },
             )
             .unwrap();

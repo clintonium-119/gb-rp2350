@@ -9,24 +9,24 @@ use fugit::{HertzU32, RateExtU32};
 pub const XOSC_CRYSTAL_FREQ: u32 = 12_000_000;
 
 pub fn configure_normal(
+    xosc_crystal_freq: u32,
     xosc_dev: pac::XOSC,
     clocks_dev: pac::CLOCKS,
     pll_sys_dev: pac::PLL_SYS,
     pll_usb_dev: pac::PLL_USB,
     resets: &mut pac::RESETS,
     watchdog: &mut Watchdog,
-) {
-    hal::clocks::init_clocks_and_plls(
-        XOSC_CRYSTAL_FREQ,
+) ->  Result<ClocksManager, ()>{
+    let clocks = hal::clocks::init_clocks_and_plls(
+        xosc_crystal_freq,
         xosc_dev,
         clocks_dev,
         pll_sys_dev,
         pll_usb_dev,
         resets,
         watchdog,
-    )
-    .ok()
-    .unwrap();
+    ).ok().unwrap();
+    Ok(clocks)
 }
 
 pub const PLL_SYS_288MHZ: hal::pll::PLLConfig = hal::pll::PLLConfig {
