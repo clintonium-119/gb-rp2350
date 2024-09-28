@@ -5,7 +5,7 @@ mod array_scaler;
 mod clocks;
 mod dma_transfer;
 mod gameboy;
-mod i2s;
+mod i2s2;
 mod pio_interface;
 mod rp_hal;
 mod scaler;
@@ -23,7 +23,7 @@ use embedded_sdmmc::{SdCard, VolumeManager};
 use gameboy::display::{GameVideoIter, GameboyLineBufferDisplay};
 use gb_core::gameboy::GameBoy;
 use hal::fugit::RateExtU32;
-use i2s::I2sPioInterface;
+use i2s2::I2sPioInterfaceDB;
 use ili9341::{DisplaySize, DisplaySize240x320};
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
@@ -194,26 +194,35 @@ fn main() -> ! {
     core::mem::drop(boot_rom_data);
     let dma = pac.DMA.split(&mut pac.RESETS);
     //////////////////////AUDIO SETUP
-    let clock_divider: u32 = 296_000_000 * 4 / 44100;
+    let clock_divider: u32 = 296_000_000 * 4 / 44_100;
+
+    let int_divider = (clock_divider >> 8) as u16;
+    let frak_divider = (clock_divider & 0xFF) as u8;
+
     let _ = pins.gpio20.into_function::<hal::gpio::FunctionPio1>();
     let _ = pins.gpio21.into_function::<hal::gpio::FunctionPio1>();
     let _ = pins.gpio22.into_function::<hal::gpio::FunctionPio1>();
-    let audio_buffer: &'static mut [u32] =
-        cortex_m::singleton!(: Vec<u32>  = alloc::vec![0; 4000 * 8  ])
+    let audio_buffer: &'static mut [u16] =
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; 2000 * 5  ])
             .unwrap()
             .as_mut_slice();
-    let i2s_interface = I2sPioInterface::new(
-        dma.ch1,
-        // ((clock_divider >> 8) as u16, (clock_divider & 0xFF) as u8),
-        (40 as u16, 100 as u8),
+    let audio_buffer2: &'static mut [u16] =
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; 2000 * 5  ])
+            .unwrap()
+            .as_mut_slice();
+    let i2s_interface = I2sPioInterfaceDB::new(
+        dma.ch2,
+        dma.ch3,
+        (int_divider as u16, frak_divider as u8),
         &mut pio_1,
         sm_1_0,
         (21, 22),
         20,
         audio_buffer,
+        audio_buffer2,
     );
     //////////////////////
-    let screen = GameboyLineBufferDisplay::new();
+    let screen = GameboyLineBufferDisplay::new(timer);
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
     const SCREEN_WIDTH: usize =
@@ -222,16 +231,20 @@ fn main() -> ! {
         (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
 
     let spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; (SCREEN_WIDTH ) * 1 ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 1 ])
             .unwrap()
             .as_mut_slice();
 
     let dm_spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; (SCREEN_WIDTH) * 1 ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 1 ])
+            .unwrap()
+            .as_mut_slice();
+    let dm_spare2: &'static mut [u16] =
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 1 ])
             .unwrap()
             .as_mut_slice();
 
-    let mut streamer = stream_display::Streamer::new(dma.ch0, dm_spare, spare);
+    let mut streamer = stream_display::Streamer::new(dma.ch0, dma.ch1, dm_spare, spare, dm_spare2);
     let scaler: scaler::ScreenScaler<144, 160, { 160 }, { 144 }> = scaler::ScreenScaler::new();
     led_pin.set_high().unwrap();
     loop {

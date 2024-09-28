@@ -1,24 +1,32 @@
+use crate::hal::timer::Instant;
+use crate::hal::timer::TimerDevice;
 use alloc::boxed::Box;
+use embedded_hal::delay::DelayNs;
 use gb_core::{gameboy::GameBoy, hardware::Screen};
-
-pub struct GameboyLineBufferDisplay {
+const NANOS_IN_VSYNC: u64 = ((1.0 / 60.0) * 1000000000.0) as u64;
+pub struct GameboyLineBufferDisplay<D: TimerDevice> {
     pub line_buffer: Box<[u16; 160]>,
     pub line_complete: bool,
     pub turn_off: bool,
+    time_counter: Instant,
+    delay: crate::hal::Timer<D>,
 }
 
-impl GameboyLineBufferDisplay {
-    pub fn new() -> Self {
+impl<D: TimerDevice> GameboyLineBufferDisplay<D> {
+    pub fn new(delay: crate::hal::Timer<D>) -> Self {
         Self {
             line_buffer: Box::new([0; 160]),
             line_complete: false,
             turn_off: false,
+            time_counter: delay.get_counter(),
+            delay: delay,
         }
     }
 }
 
-impl Screen for GameboyLineBufferDisplay {
+impl<D: TimerDevice> Screen for GameboyLineBufferDisplay<D> {
     fn turn_on(&mut self) {
+        self.time_counter = self.delay.get_counter();
         self.turn_off = true;
     }
 
@@ -37,15 +45,24 @@ impl Screen for GameboyLineBufferDisplay {
         self.line_complete = true;
     }
 
-    fn draw(&mut self, _: bool) {}
+    fn draw(&mut self, _: bool) {
+        let current_time = self.delay.get_counter();
+        let diff = current_time - self.time_counter;
+        let nano_seconds = diff.to_nanos();
+        if NANOS_IN_VSYNC > nano_seconds {
+            let time_delay = NANOS_IN_VSYNC.saturating_sub(nano_seconds) as u32;
+            self.delay.delay_ns(time_delay);
+        }
+        self.time_counter = self.delay.get_counter();
+    }
 }
 
-pub struct GameVideoIter<'a, 'b> {
-    gameboy: &'a mut GameBoy<'b, GameboyLineBufferDisplay>,
+pub struct GameVideoIter<'a, 'b, D: TimerDevice> {
+    gameboy: &'a mut GameBoy<'b, GameboyLineBufferDisplay<D>>,
     current_line_index: usize,
 }
-impl<'a, 'b> GameVideoIter<'a, 'b> {
-    pub fn new(gameboy: &'a mut GameBoy<'b, GameboyLineBufferDisplay>) -> Self {
+impl<'a, 'b, D: TimerDevice> GameVideoIter<'a, 'b, D> {
+    pub fn new(gameboy: &'a mut GameBoy<'b, GameboyLineBufferDisplay<D>>) -> Self {
         Self {
             gameboy: gameboy,
             current_line_index: 0,
@@ -53,7 +70,7 @@ impl<'a, 'b> GameVideoIter<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for GameVideoIter<'a, 'b> {
+impl<'a, 'b, D: TimerDevice> Iterator for GameVideoIter<'a, 'b, D> {
     type Item = u16;
 
     fn next(&mut self) -> Option<Self::Item> {
