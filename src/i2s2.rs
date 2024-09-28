@@ -35,6 +35,7 @@ pub struct I2sPioInterfaceDB<
 > {
     dma_state: Option<DmaState<CH1, CH2, LimitingArrayReadTarget, P, SM>>,
     second_buffer: Option<LimitingArrayReadTarget>,
+    sample_rate: u32,
 }
 
 impl<CH1, CH2, P, SM> I2sPioInterfaceDB<CH1, CH2, P, SM>
@@ -45,6 +46,7 @@ where
     SM: StateMachineIndex,
 {
     pub fn new(
+        sample_rate: u32,
         channel: CH1,
         channel2: CH2,
         clock_divider: (u16, u8),
@@ -99,6 +101,7 @@ where
         Self {
             dma_state: Some(DmaState::IDLE(cfg)),
             second_buffer: Some(from2),
+            sample_rate: sample_rate,
         }
     }
 
@@ -143,9 +146,7 @@ where
     }
 
     fn samples_rate(&self) -> u32 {
-        //16000
-        44_100
-        //5_512
+        self.sample_rate
     }
 
     fn underflowed(&self) -> bool {
@@ -156,9 +157,7 @@ where
             },
             None => false,
         };
-        if !underflowed {
-            info!("Blocked!")
-        }
+
         underflowed
     }
 }

@@ -112,6 +112,7 @@ SECTIONS
     . = ALIGN(4);
     __start_block_addr = .;
     KEEP(*(.start_block));
+    KEEP(*(.boot_info));
     . = ALIGN(4);
     *(.trap);
     *(.trap.rust);
@@ -249,4 +250,3 @@ then modify your build script to compile the C code _without_ the
 details.");
 
 /* Do not exceed this mark in the error messages above                                    | */
-

@@ -31,6 +31,7 @@ SECTIONS {
     {
         __start_block_addr = .;
         KEEP(*(.start_block));
+        KEEP(*(.boot_info));
     } > FLASH
 
 } INSERT AFTER .vector_table;
@@ -72,5 +73,4 @@ SECTIONS {
 
 PROVIDE(start_to_end = __end_block_addr - __start_block_addr);
 PROVIDE(end_to_start = __start_block_addr - __end_block_addr);
-
 

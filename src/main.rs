@@ -194,7 +194,9 @@ fn main() -> ! {
     core::mem::drop(boot_rom_data);
     let dma = pac.DMA.split(&mut pac.RESETS);
     //////////////////////AUDIO SETUP
-    let clock_divider: u32 = 296_000_000 * 4 / 44_100;
+    ///
+    let sample_rate: u32 = 8000;
+    let clock_divider: u32 = 296_000_000 * 4 / sample_rate;
 
     let int_divider = (clock_divider >> 8) as u16;
     let frak_divider = (clock_divider & 0xFF) as u8;
@@ -211,6 +213,7 @@ fn main() -> ! {
             .unwrap()
             .as_mut_slice();
     let i2s_interface = I2sPioInterfaceDB::new(
+        sample_rate,
         dma.ch2,
         dma.ch3,
         (int_divider as u16, frak_divider as u8),
@@ -231,31 +234,32 @@ fn main() -> ! {
         (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
 
     let spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 1 ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 4 ])
             .unwrap()
             .as_mut_slice();
 
     let dm_spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 1 ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 4 ])
             .unwrap()
             .as_mut_slice();
     let dm_spare2: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 1 ])
+        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 4 ])
             .unwrap()
             .as_mut_slice();
 
     let mut streamer = stream_display::Streamer::new(dma.ch0, dma.ch1, dm_spare, spare, dm_spare2);
-    let scaler: scaler::ScreenScaler<144, 160, { 160 }, { 144 }> = scaler::ScreenScaler::new();
+    let scaler: scaler::ScreenScaler<144, 160, { SCREEN_WIDTH }, { SCREEN_HEIGHT }> =
+        scaler::ScreenScaler::new();
     led_pin.set_high().unwrap();
     loop {
         display = display
             .async_transfer_mode(
                 0,
                 0,
-                // (144 - 1) as u16,
-                // (160 - 1) as u16,
                 (160 - 1) as u16,
                 (144 - 1) as u16,
+                // (SCREEN_HEIGHT - 1) as u16,
+                // (SCREEN_WIDTH - 1) as u16,
                 |iface| {
                     // let (mut sp, dc) = iface.release();
                     // sp = sp.share_bus(|bus| {
