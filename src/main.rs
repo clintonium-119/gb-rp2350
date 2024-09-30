@@ -195,7 +195,7 @@ fn main() -> ! {
     let dma = pac.DMA.split(&mut pac.RESETS);
     //////////////////////AUDIO SETUP
     ///
-    let sample_rate: u32 = 8000;
+    let sample_rate: u32 = 16000;
     let clock_divider: u32 = 296_000_000 * 4 / sample_rate;
 
     let int_divider = (clock_divider >> 8) as u16;
@@ -256,10 +256,10 @@ fn main() -> ! {
             .async_transfer_mode(
                 0,
                 0,
-                (160 - 1) as u16,
-                (144 - 1) as u16,
-                // (SCREEN_HEIGHT - 1) as u16,
-                // (SCREEN_WIDTH - 1) as u16,
+                // (160 - 1) as u16,
+                // (144 - 1) as u16,
+                (SCREEN_HEIGHT - 1) as u16,
+                (SCREEN_WIDTH - 1) as u16,
                 |iface| {
                     // let (mut sp, dc) = iface.release();
                     // sp = sp.share_bus(|bus| {
@@ -273,7 +273,7 @@ fn main() -> ! {
                     iface.transfer_16bit_mode(|sm| {
                         streamer.stream::<_, _, _, _, 1>(
                             sm,
-                            &mut (GameVideoIter::new(&mut gameboy)),
+                            &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
                             |d| [d],
                         )
                     })

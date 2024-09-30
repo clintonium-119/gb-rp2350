@@ -1,7 +1,5 @@
 use crate::rp_hal::hal;
 
-use fon::chan::{Ch16, Ch32};
-
 use hal::pio::UninitStateMachine;
 use hal::pio::{PIOExt, PIO};
 use hal::pio::{StateMachineIndex, Tx};
@@ -10,11 +8,9 @@ use embedded_dma::ReadBuffer;
 use hal::dma::double_buffer::{Config as DConfig, Transfer as DTransfer};
 
 use crate::hal::dma::double_buffer::ReadNext;
-use crate::hal::dma::EndlessWriteTarget;
-use defmt::*;
 use defmt_rtt as _;
+use hal::dma::ReadTarget;
 use hal::dma::SingleChannel;
-use hal::dma::{ReadTarget, WriteTarget};
 type ToType<P, SM> = Tx<(P, SM), hal::dma::HalfWord>;
 enum DmaState<
     CH1: SingleChannel,
@@ -106,15 +102,11 @@ where
     }
 
     fn process_audio(
-        output_buffer: &[i16],
+        output_buffer: &[u16],
         static_buffer: LimitingArrayReadTarget,
     ) -> LimitingArrayReadTarget {
         let output = static_buffer.new_max_read((output_buffer.len() * 1) as u32);
-
-        for (i, v) in output_buffer.chunks(2).enumerate() {
-            output.array[(i * 2) + 0] = v[0] as u16;
-            output.array[(i * 2) + 1] = v[1] as u16;
-        }
+        output.array[..output_buffer.len()].clone_from_slice(output_buffer);
         output
     }
 }
@@ -126,21 +118,21 @@ where
     P: PIOExt,
     SM: StateMachineIndex,
 {
-    fn play(&mut self, output_buffer: &[i16]) {
+    fn play(&mut self, output_buffer: &[u16]) {
         let dma_state = core::mem::replace(&mut self.dma_state, None).unwrap();
 
         match dma_state {
             DmaState::IDLE(transfer) => {
                 let second_buffer = core::mem::replace(&mut self.second_buffer, None).unwrap();
                 let second_buffer = Self::process_audio(output_buffer, second_buffer);
-                let kldf = transfer.read_next(second_buffer);
-                self.dma_state = Some(DmaState::RUNNING(kldf));
+                let new_transfer = transfer.read_next(second_buffer);
+                self.dma_state = Some(DmaState::RUNNING(new_transfer));
             }
             DmaState::RUNNING(transfer) => {
                 let dms = transfer.wait();
                 let second_buffer = Self::process_audio(output_buffer, dms.0);
-                let kldf = dms.1.read_next(second_buffer);
-                self.dma_state = Some(DmaState::RUNNING(kldf));
+                let new_transfer = dms.1.read_next(second_buffer);
+                self.dma_state = Some(DmaState::RUNNING(new_transfer));
             }
         };
     }
@@ -158,7 +150,7 @@ where
             None => false,
         };
 
-        underflowed
+        true
     }
 }
 
