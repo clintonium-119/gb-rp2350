@@ -64,7 +64,7 @@ nostd_async = { version = "0.6.1", features = ["cortex_m"] }
 panic-halt = "0.2.0"
 pio = "0.2.0"
 pio-proc = "0.2.0"
-rp235x-hal = { path = "C:\\Users\\pablo\\projects\\rp-hal\\rp235x-hal", version = "0.2.0", features = [
+rp235x-hal = { git = "https://github.com/rp-rs/rp-hal.git", rev = "63af8640a666ad329a0ddb1b8501a75d2ff61e3b", features = [
     "binary-info",
     "critical-section-impl",
     "rt",

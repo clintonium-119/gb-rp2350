@@ -55,6 +55,10 @@ impl<D: TimerDevice> Screen for GameboyLineBufferDisplay<D> {
         }
         self.time_counter = self.delay.get_counter();
     }
+
+    fn frame_rate(&self) -> u8 {
+        30
+    }
 }
 
 pub struct GameVideoIter<'a, 'b, D: TimerDevice> {
