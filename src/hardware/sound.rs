@@ -23,18 +23,14 @@ enum DmaState<
     RUNNING(DTransfer<CH1, CH2, FROM, ToType<P, SM>, ReadNext<FROM>>),
 }
 
-pub struct I2sPioInterfaceDB<
-    CH1: SingleChannel,
-    CH2: SingleChannel,
-    P: PIOExt,
-    SM: StateMachineIndex,
-> {
+pub struct I2sPioInterface<CH1: SingleChannel, CH2: SingleChannel, P: PIOExt, SM: StateMachineIndex>
+{
     dma_state: Option<DmaState<CH1, CH2, LimitingArrayReadTarget, P, SM>>,
     second_buffer: Option<LimitingArrayReadTarget>,
     sample_rate: u32,
 }
 
-impl<CH1, CH2, P, SM> I2sPioInterfaceDB<CH1, CH2, P, SM>
+impl<CH1, CH2, P, SM> I2sPioInterface<CH1, CH2, P, SM>
 where
     CH1: SingleChannel,
     CH2: SingleChannel,
@@ -51,7 +47,6 @@ where
         clock_pin: (u8, u8),
         data_pin: u8,
         buffer: &'static mut [u16],
-        buffer2: &'static mut [u16],
     ) -> Self
     where
         P: PIOExt,
@@ -72,7 +67,7 @@ where
         );
 
         let video_program_installed = pio.install(&audio_program.program).unwrap();
-        let (mut video_sm, rx, vid_tx) =
+        let (mut video_sm, _rx, vid_tx) =
             hal::pio::PIOBuilder::from_installed_program(video_program_installed)
                 .out_pins(data_pin, 1)
                 .side_set_pin_base(clock_pin.0)
@@ -90,7 +85,8 @@ where
         let _ = video_sm.start();
         let to_dest = vid_tx.transfer_size(hal::dma::HalfWord);
 
-        let from = LimitingArrayReadTarget::new(buffer, buffer.len() as u32);
+        let (buffer1, buffer2) = buffer.split_at_mut(buffer.len() / 2);
+        let from = LimitingArrayReadTarget::new(buffer1, buffer1.len() as u32);
         let from2 = LimitingArrayReadTarget::new(buffer2, buffer2.len() as u32);
         let cfg = DConfig::new((channel, channel2), from, to_dest).start();
 
@@ -111,7 +107,7 @@ where
     }
 }
 
-impl<CH1, CH2, P, SM> gb_core::hardware::sound::AudioPlayer for I2sPioInterfaceDB<CH1, CH2, P, SM>
+impl<CH1, CH2, P, SM> gb_core::hardware::sound::AudioPlayer for I2sPioInterface<CH1, CH2, P, SM>
 where
     CH1: SingleChannel,
     CH2: SingleChannel,

@@ -1,29 +1,29 @@
 #![no_std]
 #![no_main]
-mod array_scaler;
 
 mod clocks;
-mod dma_transfer;
+
 mod gameboy;
-mod i2s2;
-mod pio_interface;
+mod hardware;
+
 mod rp_hal;
-mod scaler;
-mod sdcard;
+
 mod spi_device;
-mod stream_display;
+
 mod util;
 
 use alloc::boxed::Box;
 use embedded_hal::digital::OutputPin;
 extern crate alloc;
 
-use alloc::vec::Vec;
 use embedded_sdmmc::{SdCard, VolumeManager};
-use gameboy::display::{GameVideoIter, GameboyLineBufferDisplay};
+use gameboy::display::GameboyLineBufferDisplay;
+use gameboy::{GameEmulationHandler, InputButtonMapper};
 use gb_core::gameboy::GameBoy;
 use hal::fugit::RateExtU32;
-use i2s2::I2sPioInterfaceDB;
+
+use hardware::display::ScreenScaler;
+
 use ili9341::{DisplaySize, DisplaySize240x320};
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
@@ -37,7 +37,6 @@ use rp_hal::hal;
 
 // Some things we need
 use embedded_alloc::Heap;
-use util::DummyOutputPin;
 
 /// Tell the Boot ROM about our application
 #[link_section = ".start_block"]
@@ -55,7 +54,7 @@ static ALLOCATOR: Heap = Heap::empty();
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 470_000;
+        const HEAP_SIZE: usize = 200_000;
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -94,45 +93,45 @@ fn main() -> ! {
 
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
-    let rs = pins.gpio28.into_push_pull_output();
-    let rw = pins.gpio27.into_function::<hal::gpio::FunctionPio0>(); //AKA DC
+    ////////////////
+    ////
+    ////
+    ////
+    let (mut pio_0, sm0_0, sm0_1, _, _) = pac.PIO0.split(&mut pac.RESETS);
 
-    let _ = pins.gpio3.into_function::<hal::gpio::FunctionPio0>();
-    let _ = pins.gpio4.into_function::<hal::gpio::FunctionPio0>();
-    let _ = pins.gpio5.into_function::<hal::gpio::FunctionPio0>();
-    let _ = pins.gpio6.into_function::<hal::gpio::FunctionPio0>();
-    let _ = pins.gpio7.into_function::<hal::gpio::FunctionPio0>();
-    let _ = pins.gpio8.into_function::<hal::gpio::FunctionPio0>();
-    let _ = pins.gpio9.into_function::<hal::gpio::FunctionPio0>();
-    let _ = pins.gpio10.into_function::<hal::gpio::FunctionPio0>();
-
-    let (mut pio_0, sm0_0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
     let (mut pio_1, sm_1_0, _, _, _) = pac.PIO1.split(&mut pac.RESETS);
+    let dma = pac.DMA.split(&mut pac.RESETS);
 
+    const SCREEN_WIDTH: usize =
+        (<DisplaySize240x320 as DisplaySize>::WIDTH as f32 / 1.0f32) as usize;
+    const SCREEN_HEIGHT: usize =
+        (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
     ///////////////////////////////SD CARD
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio18.into_function::<hal::gpio::FunctionSpi>();
+        pins.gpio14.into_function::<hal::gpio::FunctionSpi>();
     let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio19.into_function::<hal::gpio::FunctionSpi>(); //tx
-    let spi_cs = pins.gpio17.into_push_pull_output();
+        pins.gpio15.into_function::<hal::gpio::FunctionSpi>();
+    let spi_cs = pins.gpio13.into_push_pull_output();
     let spi_miso: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio16.into_function::<hal::gpio::FunctionSpi>(); //rx
+        pins.gpio12.into_function::<hal::gpio::FunctionSpi>();
 
     // Create the SPI driver instance for the SPI0 device
-    let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI0, (spi_mosi, spi_miso, spi_sclk));
+    let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk));
     let spi = spi.init(
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
-        400.kHz(),
+        400.kHz(), // card initialization happens at low baud rate
         embedded_hal::spi::MODE_0,
     );
+
     let exclusive_spi = embedded_hal_bus::spi::ExclusiveDevice::new(spi, spi_cs, timer).unwrap();
     let sdcard = SdCard::new(exclusive_spi, timer);
-    let mut volume_mgr = VolumeManager::new(sdcard, sdcard::DummyTimesource::default());
+    let mut volume_mgr = VolumeManager::new(sdcard, hardware::sdcard::DummyTimesource::default());
 
     let mut volume0 = volume_mgr
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
+
     let mut root_dir = volume0.open_root_dir().unwrap();
 
     //Read boot rom
@@ -143,141 +142,110 @@ fn main() -> ! {
     boot_rom_file.read(&mut *boot_rom_data).unwrap();
     boot_rom_file.close().unwrap();
 
-    let rom_file = root_dir
-        .open_file_in_dir("tetris.gb", embedded_sdmmc::Mode::ReadOnly)
-        .unwrap();
-
-    let roms = gameboy::rom::SdRomManager::new(rom_file);
+    let roms = gameboy::rom::SdRomManager::new("tetris.gb", root_dir, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
     let cartridge = gb_rom.into_cartridge();
-
-    ///////////////////////////////
-    let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio14.into_function::<hal::gpio::FunctionSpi>();
-    let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio15.into_function::<hal::gpio::FunctionSpi>(); //tx
-    let mut spi_cs = pins.gpio13.into_push_pull_output();
-    let spi_miso: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio12.into_function::<hal::gpio::FunctionSpi>(); //rx
-    let spi_screen = spi::Spi::<_, _, _, 8>::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk));
-    let screen_dc: hal::gpio::Pin<
-        hal::gpio::bank0::Gpio11,
-        hal::gpio::FunctionSio<hal::gpio::SioOutput>,
-        hal::gpio::PullDown,
-    > = pins.gpio11.into_push_pull_output();
-    let spi_screen = spi_screen.init(
-        &mut pac.RESETS,
-        clocks.peripheral_clock.freq(),
-        80.MHz(), // card initialization happens at low baud rate
-        embedded_hal::spi::MODE_0,
-    );
-    spi_cs.set_low().unwrap();
-    let exclusive_screen_spi = spi_device::ExclusiveDevice::new(spi_screen, spi_cs, timer).unwrap();
-    let spi_display_interface =
-        display_interface_spi::SPIInterface::new(exclusive_screen_spi, screen_dc);
-    /////////////
-    let interface =
-        pio_interface::PioInterface::new(2, rs, &mut pio_0, sm0_0, rw.id().num, (3, 10), endianess);
-
-    let mut display = ili9341::Ili9341::new_orig(
-        interface,
-        DummyOutputPin,
-        &mut timer,
-        ili9341::Orientation::Landscape,
-        ili9341::DisplaySize240x320,
-    )
-    .unwrap();
-
     let boot_rom = gb_core::hardware::boot_rom::Bootrom::new(Some(
         gb_core::hardware::boot_rom::BootromData::from_bytes(&*boot_rom_data),
     ));
     core::mem::drop(boot_rom_data);
-    let dma = pac.DMA.split(&mut pac.RESETS);
+
     //////////////////////AUDIO SETUP
-    ///
+
     let sample_rate: u32 = 16000;
     let clock_divider: u32 = 296_000_000 * 4 / sample_rate;
 
     let int_divider = (clock_divider >> 8) as u16;
     let frak_divider = (clock_divider & 0xFF) as u8;
 
-    let _ = pins.gpio20.into_function::<hal::gpio::FunctionPio1>();
-    let _ = pins.gpio21.into_function::<hal::gpio::FunctionPio1>();
-    let _ = pins.gpio22.into_function::<hal::gpio::FunctionPio1>();
+    let _i2s_din = pins.gpio9.into_function::<hal::gpio::FunctionPio1>();
+    let _i2s_bclk = pins.gpio10.into_function::<hal::gpio::FunctionPio1>();
+    let _i2s_lrc = pins.gpio11.into_function::<hal::gpio::FunctionPio1>();
     let audio_buffer: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; 2000 * 5  ])
+        cortex_m::singleton!(: [u16; (2000 * 3) * 3]  = [0u16;  (2000 * 3) * 3 ])
             .unwrap()
             .as_mut_slice();
-    let audio_buffer2: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; 2000 * 5  ])
-            .unwrap()
-            .as_mut_slice();
-    let i2s_interface = I2sPioInterfaceDB::new(
+    let i2s_interface = hardware::sound::I2sPioInterface::new(
         sample_rate,
         dma.ch2,
         dma.ch3,
         (int_divider as u16, frak_divider as u8),
         &mut pio_1,
         sm_1_0,
-        (21, 22),
-        20,
+        (10, 11),
+        9,
         audio_buffer,
-        audio_buffer2,
     );
-    //////////////////////
+
     let screen = GameboyLineBufferDisplay::new(timer);
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
-    const SCREEN_WIDTH: usize =
-        (<DisplaySize240x320 as DisplaySize>::WIDTH as f32 / 1.0f32) as usize;
-    const SCREEN_HEIGHT: usize =
-        (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
+    //SCREEN
+    let screen_data_command_pin = pins.gpio3.into_push_pull_output();
 
-    let spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 4 ])
+    let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio5.into_function::<hal::gpio::FunctionPio0>();
+    let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio4.into_function::<hal::gpio::FunctionPio0>();
+
+    let display_buffer: &'static mut [u16] =
+        cortex_m::singleton!(: [u16;(SCREEN_WIDTH) * 3]  = [0u16; (SCREEN_WIDTH ) * 3 ])
             .unwrap()
             .as_mut_slice();
 
-    let dm_spare: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 4 ])
-            .unwrap()
-            .as_mut_slice();
-    let dm_spare2: &'static mut [u16] =
-        cortex_m::singleton!(: Vec<u16>  = alloc::vec![0; SCREEN_WIDTH * 4 ])
-            .unwrap()
-            .as_mut_slice();
+    let streamer = hardware::display::DmaStreamer::new(dma.ch0, dma.ch1, display_buffer);
 
-    let mut streamer = stream_display::Streamer::new(dma.ch0, dma.ch1, dm_spare, spare, dm_spare2);
-    let scaler: scaler::ScreenScaler<144, 160, { SCREEN_WIDTH }, { SCREEN_HEIGHT }> =
-        scaler::ScreenScaler::new();
+    let display_interface = hardware::display::SpiPioDmaInterface::new(
+        (3, 0),
+        screen_data_command_pin,
+        &mut pio_0,
+        sm0_1,
+        sm0_0,
+        spi_sclk.id().num,
+        spi_mosi.id().num,
+        streamer,
+    );
+
+    let display_reset = pins.gpio2.into_push_pull_output();
+    let mut display = ili9341::Ili9341::new(
+        display_interface,
+        display_reset,
+        &mut timer,
+        ili9341::Orientation::LandscapeFlipped,
+        ili9341::DisplaySize240x320,
+    )
+    .unwrap();
+
+    let scaler: ScreenScaler<144, 160, { SCREEN_WIDTH }, { SCREEN_HEIGHT }> = ScreenScaler::new();
+
+    ////////////////////// JOYPAD
+    let mut b_button = pins.gpio16.into_pull_down_input().into_dyn_pin();
+    let mut a_button = pins.gpio17.into_pull_down_input().into_dyn_pin();
+    let mut right_button = pins.gpio18.into_pull_down_input().into_dyn_pin();
+    let mut down_button = pins.gpio19.into_pull_down_input().into_dyn_pin();
+    let mut left_button = pins.gpio20.into_pull_down_input().into_dyn_pin();
+    let mut up_button = pins.gpio21.into_pull_down_input().into_dyn_pin();
+    let mut select_button = pins.gpio22.into_pull_down_input().into_dyn_pin();
+    let mut start_button = pins.gpio26.into_pull_down_input().into_dyn_pin();
+    let mut button_handler = InputButtonMapper::new(
+        &mut a_button,
+        &mut b_button,
+        &mut start_button,
+        &mut select_button,
+        &mut up_button,
+        &mut down_button,
+        &mut left_button,
+        &mut right_button,
+    );
     led_pin.set_high().unwrap();
     loop {
-        display = display
-            .async_transfer_mode(
+        display
+            .draw_raw_iter(
                 0,
                 0,
-                // (160 - 1) as u16,
-                // (144 - 1) as u16,
-                (SCREEN_HEIGHT - 1) as u16,
-                (SCREEN_WIDTH - 1) as u16,
-                |iface| {
-                    // let (mut sp, dc) = iface.release();
-                    // sp = sp.share_bus(|bus| {
-                    //     streamer.stream::<_, _, _, _, 2>(
-                    //         bus,
-                    //         &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
-                    //         |d| d.to_be_bytes(),
-                    //     )
-                    // });
-                    // display_interface_spi::SPIInterface::new(sp, dc)
-                    iface.transfer_16bit_mode(|sm| {
-                        streamer.stream::<_, _, _, _, 1>(
-                            sm,
-                            &mut scaler.scale_iterator(GameVideoIter::new(&mut gameboy)),
-                            |d| [d],
-                        )
-                    })
-                },
+                (160 - 1) as u16,
+                (144 - 1) as u16,
+                (GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
     }
@@ -293,12 +261,3 @@ pub static PICOTOOL_ENTRIES: [hal::binary_info::EntryAddr; 5] = [
     hal::binary_info::rp_cargo_homepage_url!(),
     hal::binary_info::rp_program_build_attribute!(),
 ];
-
-#[inline(always)]
-const fn endianess(be: bool, val: u16) -> u16 {
-    if be {
-        val.to_le()
-    } else {
-        val.to_be()
-    }
-}

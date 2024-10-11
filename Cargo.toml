@@ -20,10 +20,11 @@ version = "0.1.0"
 
 [dependencies]
 
-ili9341 = { path = "C:\\Users\\pablo\\projects\\ili9341-rs", features = [
+ili9341 = { version = "0.6.0", features = [
     "embedded-graphics-core",
     "graphics",
 ], default-features = false }
+byte-slice-cast = { version = "1.2.2", default-features = false }
 display-interface = "0.5"
 embedded-graphics-core = "0.4.0"
 embedded-graphics = "0.8.1"
