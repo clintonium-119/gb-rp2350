@@ -89,7 +89,7 @@ impl<'a, 'b> GameboyButtonHandler<'b> for InputButtonMapper<'a> {
     #[inline(always)]
     fn handle_button_clicks<SC: Screen>(&mut self, gameboy: &mut GameBoy<'b, SC>) {
         ////
-        if self.b_button.is_high().unwrap() {
+        if self.b_button.is_low().unwrap() {
             if self.b_button_state == false {
                 gameboy.key_pressed(gb_core::hardware::input::Button::B);
                 self.b_button_state = true;
@@ -101,7 +101,7 @@ impl<'a, 'b> GameboyButtonHandler<'b> for InputButtonMapper<'a> {
             }
         }
         ////
-        if self.a_button.is_high().unwrap() {
+        if self.a_button.is_low().unwrap() {
             if self.a_button_state == false {
                 gameboy.key_pressed(gb_core::hardware::input::Button::A);
                 self.a_button_state = true;
@@ -113,7 +113,7 @@ impl<'a, 'b> GameboyButtonHandler<'b> for InputButtonMapper<'a> {
             }
         }
         ////
-        if self.select_button.is_high().unwrap() {
+        if self.select_button.is_low().unwrap() {
             if self.select_button_state == false {
                 gameboy.key_pressed(gb_core::hardware::input::Button::SELECT);
                 self.select_button_state = true;
@@ -125,7 +125,7 @@ impl<'a, 'b> GameboyButtonHandler<'b> for InputButtonMapper<'a> {
             }
         }
         /////
-        if self.start_button.is_high().unwrap() {
+        if self.start_button.is_low().unwrap() {
             if self.start_button_state == false {
                 gameboy.key_pressed(gb_core::hardware::input::Button::START);
                 self.start_button_state = true;
@@ -137,7 +137,7 @@ impl<'a, 'b> GameboyButtonHandler<'b> for InputButtonMapper<'a> {
             }
         }
         /////
-        if self.up_button.is_high().unwrap() {
+        if self.up_button.is_low().unwrap() {
             if self.up_button_state == false {
                 gameboy.key_pressed(gb_core::hardware::input::Button::UP);
                 self.up_button_state = true;
@@ -149,7 +149,7 @@ impl<'a, 'b> GameboyButtonHandler<'b> for InputButtonMapper<'a> {
             }
         }
         /////
-        if self.down_button.is_high().unwrap() {
+        if self.down_button.is_low().unwrap() {
             if self.down_button_state == false {
                 gameboy.key_pressed(gb_core::hardware::input::Button::DOWN);
                 self.down_button_state = true;
@@ -161,7 +161,7 @@ impl<'a, 'b> GameboyButtonHandler<'b> for InputButtonMapper<'a> {
             }
         }
         /////
-        if self.left_button.is_high().unwrap() {
+        if self.left_button.is_low().unwrap() {
             if self.left_button_state == false {
                 gameboy.key_pressed(gb_core::hardware::input::Button::LEFT);
                 self.left_button_state = true;
@@ -173,7 +173,7 @@ impl<'a, 'b> GameboyButtonHandler<'b> for InputButtonMapper<'a> {
             }
         }
         /////
-        if self.right_button.is_high().unwrap() {
+        if self.right_button.is_low().unwrap() {
             if self.right_button_state == false {
                 gameboy.key_pressed(gb_core::hardware::input::Button::RIGHT);
                 self.right_button_state = true;

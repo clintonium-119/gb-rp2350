@@ -54,7 +54,7 @@ static ALLOCATOR: Heap = Heap::empty();
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 200_000;
+        const HEAP_SIZE: usize = 300_000;
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -142,7 +142,7 @@ fn main() -> ! {
     boot_rom_file.read(&mut *boot_rom_data).unwrap();
     boot_rom_file.close().unwrap();
 
-    let roms = gameboy::rom::SdRomManager::new("tetris.gb", root_dir, timer);
+    let roms = gameboy::rom::SdRomManager::new("pkred.gb", root_dir, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
     let cartridge = gb_rom.into_cartridge();
     let boot_rom = gb_core::hardware::boot_rom::Bootrom::new(Some(
@@ -219,14 +219,14 @@ fn main() -> ! {
     let scaler: ScreenScaler<144, 160, { SCREEN_WIDTH }, { SCREEN_HEIGHT }> = ScreenScaler::new();
 
     ////////////////////// JOYPAD
-    let mut b_button = pins.gpio16.into_pull_down_input().into_dyn_pin();
-    let mut a_button = pins.gpio17.into_pull_down_input().into_dyn_pin();
-    let mut right_button = pins.gpio18.into_pull_down_input().into_dyn_pin();
-    let mut down_button = pins.gpio19.into_pull_down_input().into_dyn_pin();
-    let mut left_button = pins.gpio20.into_pull_down_input().into_dyn_pin();
-    let mut up_button = pins.gpio21.into_pull_down_input().into_dyn_pin();
-    let mut select_button = pins.gpio22.into_pull_down_input().into_dyn_pin();
-    let mut start_button = pins.gpio26.into_pull_down_input().into_dyn_pin();
+    let mut b_button = pins.gpio16.into_pull_up_input().into_dyn_pin();
+    let mut a_button = pins.gpio17.into_pull_up_input().into_dyn_pin();
+    let mut right_button = pins.gpio18.into_pull_up_input().into_dyn_pin();
+    let mut down_button = pins.gpio19.into_pull_up_input().into_dyn_pin();
+    let mut left_button = pins.gpio20.into_pull_up_input().into_dyn_pin();
+    let mut up_button = pins.gpio21.into_pull_up_input().into_dyn_pin();
+    let mut select_button = pins.gpio22.into_pull_up_input().into_dyn_pin();
+    let mut start_button = pins.gpio26.into_pull_up_input().into_dyn_pin();
     let mut button_handler = InputButtonMapper::new(
         &mut a_button,
         &mut b_button,

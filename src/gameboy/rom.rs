@@ -45,12 +45,16 @@ impl<
         rom_file.seek_from_start(0u32).unwrap();
         rom_file.read(&mut *bank_0).unwrap();
         rom_file.close().unwrap();
-
-        let result = Self {
+        let mut lru = ConstLru::new();
+        lru.insert(0, Box::new([9; 0x4000]));
+        lru.insert(1, Box::new([9; 0x4000]));
+        lru.insert(2, Box::new([9; 0x4000]));
+        // lru.insert(3, Box::new([9; 0x4000]));
+        let mut result: SdRomManager<'a, D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
             rom_name: rom_name.to_string(),
             bank_0: bank_0,
             root_dir: RefCell::new(root_dir),
-            bank_lru: RefCell::new(ConstLru::new()),
+            bank_lru: RefCell::new(lru),
             start_time: timer.get_counter(),
             timer,
         };
