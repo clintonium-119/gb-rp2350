@@ -13,6 +13,7 @@ mod spi_device;
 mod util;
 
 use alloc::boxed::Box;
+use cortex_m::asm;
 use embedded_hal::digital::OutputPin;
 extern crate alloc;
 
@@ -29,12 +30,13 @@ use ili9341::{DisplaySize, DisplaySize240x320};
 // be linked)
 use panic_halt as _;
 
+use rp235x_hal::uart::{DataBits, StopBits, UartConfig};
 use rp235x_hal::{spi, Clock};
 use rp_hal::hal::dma::DMAExt;
 use rp_hal::hal::pio::PIOExt;
 // Alias for our HAL crate
+use core::fmt::Write;
 use rp_hal::hal;
-
 // Some things we need
 use embedded_alloc::Heap;
 
@@ -54,22 +56,46 @@ static ALLOCATOR: Heap = Heap::empty();
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 300_000;
+        const HEAP_SIZE: usize = 300_000 + (0x4000 * 6);
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
 
     // Grab our singleton objects
     let mut pac = hal::pac::Peripherals::take().unwrap();
+    let sio = hal::Sio::new(pac.SIO);
+
+    let pins = hal::gpio::Pins::new(
+        pac.IO_BANK0,
+        pac.PADS_BANK0,
+        sio.gpio_bank0,
+        &mut pac.RESETS,
+    );
 
     // Set up the watchdog driver - needed by the clock setup code
     let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
 
+    pac.POWMAN.vreg_ctrl().write(|w| unsafe {
+        w.bits(0x5AFE_0000);
+        w.unlock().set_bit();
+        w.ht_th().bits(0b101);
+        w.rst_n().set_bit();
+        w
+    });
+
+    while pac.POWMAN.vreg().read().update_in_progress().bit_is_set() {
+        asm::nop();
+    }
     pac.POWMAN
         .vreg()
-        .write(|w| unsafe { w.vsel().bits(0b01111) }); //1.3v
+        .modify(|_, w| unsafe { w.bits(0x5AFE_0000).vsel().bits(0b01111) }); // 0b01111 = 1.30V, 0b01011 = 1.15v
 
-    let clocks = clocks::configure_overclock(
+    while pac.POWMAN.vreg().read().update_in_progress().bit_is_set() {
+        asm::nop();
+    }
+
+    let (clocks, mut timer) = clocks::configure_overclock(
+        pac.TIMER0,
         XTAL_FREQ_HZ,
         pac.XOSC,
         pac.CLOCKS,
@@ -81,22 +107,23 @@ fn main() -> ! {
     .ok()
     .unwrap();
 
-    let mut timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
-    let sio = hal::Sio::new(pac.SIO);
-
-    let pins = hal::gpio::Pins::new(
-        pac.IO_BANK0,
-        pac.PADS_BANK0,
-        sio.gpio_bank0,
-        &mut pac.RESETS,
+    /////////////////////UART!
+    let uart0_pins = (
+        // UART TX (characters sent from rp235x) on pin 4 (GPIO2) in Aux mode
+        pins.gpio0.into_function(),
+        // UART RX (characters received by rp235x) on pin 5 (GPIO3) in Aux mode
+        pins.gpio1.into_function(),
     );
-
+    let mut uart0 = hal::uart::UartPeripheral::new(pac.UART0, uart0_pins, &mut pac.RESETS)
+        .enable(
+            UartConfig::new(115200.Hz(), DataBits::Eight, None, StopBits::One),
+            clocks.peripheral_clock.freq(),
+        )
+        .unwrap();
+    let vreg = pac.POWMAN.vreg().read().bits();
+    writeln!(uart0, "UART0 says value: {:b}", vreg).unwrap();
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
-    ////////////////
-    ////
-    ////
-    ////
     let (mut pio_0, sm0_0, sm0_1, _, _) = pac.PIO0.split(&mut pac.RESETS);
 
     let (mut pio_1, sm_1_0, _, _, _) = pac.PIO1.split(&mut pac.RESETS);
@@ -238,6 +265,7 @@ fn main() -> ! {
         &mut right_button,
     );
     led_pin.set_high().unwrap();
+
     loop {
         display
             .draw_raw_iter(
