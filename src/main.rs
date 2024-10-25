@@ -56,7 +56,7 @@ static ALLOCATOR: Heap = Heap::empty();
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 300_000 + (0x4000 * 6);
+        const HEAP_SIZE: usize = 300_000 + (0x4000 * 8);
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -88,7 +88,7 @@ fn main() -> ! {
     }
     pac.POWMAN
         .vreg()
-        .modify(|_, w| unsafe { w.bits(0x5AFE_0000).vsel().bits(0b01111) }); // 0b01111 = 1.30V, 0b01011 = 1.15v
+        .modify(|_, w| unsafe { w.bits(0x5AFE_0000).vsel().bits(0b01111) }); // 0b01111 = 1.30V
 
     while pac.POWMAN.vreg().read().update_in_progress().bit_is_set() {
         asm::nop();
@@ -179,8 +179,8 @@ fn main() -> ! {
 
     //////////////////////AUDIO SETUP
 
-    let sample_rate: u32 = 16000;
-    let clock_divider: u32 = 296_000_000 * 4 / sample_rate;
+    let sample_rate: u32 = 16_000;
+    let clock_divider: u32 = clocks.system_clock.freq().to_Hz() * 4 / sample_rate;
 
     let int_divider = (clock_divider >> 8) as u16;
     let frak_divider = (clock_divider & 0xFF) as u8;
@@ -265,17 +265,23 @@ fn main() -> ! {
         &mut right_button,
     );
     led_pin.set_high().unwrap();
-
+    writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
+    writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
     loop {
         display
             .draw_raw_iter(
                 0,
                 0,
-                (160 - 1) as u16,
-                (144 - 1) as u16,
-                (GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
+                // (160 - 1) as u16,
+                // (144 - 1) as u16,
+                (SCREEN_HEIGHT - 1) as u16,
+                (SCREEN_WIDTH - 1) as u16,
+                scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
+
+        writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
+        writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
     }
 }
 
