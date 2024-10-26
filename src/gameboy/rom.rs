@@ -19,7 +19,7 @@ pub struct SdRomManager<
     rom_name: String,
     root_dir: RefCell<embedded_sdmmc::Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>>,
     bank_0: Box<[u8; 0x4000]>,
-    bank_lru: RefCell<ConstLru<usize, Box<[u8; 0x4000]>, 11, u8>>,
+    bank_lru: RefCell<ConstLru<usize, Box<[u8; 0x4000]>, 9, u8>>,
     start_time: Instant,
     timer: crate::hal::Timer<DT>,
 }
@@ -105,6 +105,69 @@ impl<
         let current_time = self.timer.get_counter();
         let diff = current_time - self.start_time;
         diff.to_micros()
+    }
+
+    fn save(&mut self, game_title: &str, bank_index: u8, bank: &[u8]) {
+        let mut root_directory = self.root_dir.borrow_mut();
+
+        if root_directory.find_directory_entry("saves").is_err() {
+            root_directory.make_dir_in_dir("saves").unwrap();
+        }
+        let mut game_dir_name = game_title.replace(" ", "").to_lowercase();
+        game_dir_name.truncate(game_dir_name.len().min(8));
+
+        let mut save_directory = root_directory.open_dir("saves").unwrap();
+        if save_directory
+            .find_directory_entry(game_dir_name.as_str())
+            .is_err()
+        {
+            save_directory
+                .make_dir_in_dir(game_dir_name.as_str())
+                .unwrap();
+        }
+        let mut game_directory = save_directory.open_dir(game_dir_name.as_str()).unwrap();
+
+        let mut bank_file = game_directory
+            .open_file_in_dir(
+                alloc::format!("{}", bank_index).as_str(),
+                embedded_sdmmc::Mode::ReadWriteCreateOrTruncate,
+            )
+            .unwrap();
+
+        bank_file.write(bank).unwrap();
+    }
+
+    fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
+        let mut root_directory = self.root_dir.borrow_mut();
+
+        if root_directory.find_directory_entry("saves").is_err() {
+            root_directory.make_dir_in_dir("saves").unwrap();
+        }
+        let mut game_dir_name = game_title.replace(" ", "").to_lowercase();
+        game_dir_name.truncate(game_dir_name.len().min(8));
+
+        let mut save_directory = root_directory.open_dir("saves").unwrap();
+        if save_directory
+            .find_directory_entry(game_dir_name.as_str())
+            .is_err()
+        {
+            save_directory
+                .make_dir_in_dir(game_dir_name.as_str())
+                .unwrap();
+        }
+        let mut game_directory = save_directory.open_dir(game_dir_name.as_str()).unwrap();
+
+        let bank_name = alloc::format!("{}", bank_index);
+        if game_directory
+            .find_directory_entry(bank_name.as_str())
+            .is_ok()
+        {
+            let mut bank_file = game_directory
+                .open_file_in_dir(bank_name.as_str(), embedded_sdmmc::Mode::ReadOnly)
+                .unwrap();
+
+            bank_file.read(bank).unwrap();
+        }
     }
 }
 impl<

@@ -56,7 +56,7 @@ static ALLOCATOR: Heap = Heap::empty();
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 300_000 + (0x4000 * 8);
+        const HEAP_SIZE: usize = 300_000 + (0x4000 * 7);
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -82,7 +82,6 @@ fn main() -> ! {
         w.rst_n().set_bit();
         w
     });
-
     while pac.POWMAN.vreg().read().update_in_progress().bit_is_set() {
         asm::nop();
     }
@@ -120,8 +119,7 @@ fn main() -> ! {
             clocks.peripheral_clock.freq(),
         )
         .unwrap();
-    let vreg = pac.POWMAN.vreg().read().bits();
-    writeln!(uart0, "UART0 says value: {:b}", vreg).unwrap();
+
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
     let (mut pio_0, sm0_0, sm0_1, _, _) = pac.PIO0.split(&mut pac.RESETS);
@@ -171,6 +169,8 @@ fn main() -> ! {
 
     let roms = gameboy::rom::SdRomManager::new("pkred.gb", root_dir, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
+
+    writeln!(uart0, "Loading game: {}", &gb_rom.title).unwrap();
     let cartridge = gb_rom.into_cartridge();
     let boot_rom = gb_core::hardware::boot_rom::Bootrom::new(Some(
         gb_core::hardware::boot_rom::BootromData::from_bytes(&*boot_rom_data),
@@ -203,7 +203,7 @@ fn main() -> ! {
         9,
         audio_buffer,
     );
-
+    writeln!(uart0, "Check 1").unwrap();
     let screen = GameboyLineBufferDisplay::new(timer);
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
@@ -219,7 +219,7 @@ fn main() -> ! {
         cortex_m::singleton!(: [u16;(SCREEN_WIDTH) * 3]  = [0u16; (SCREEN_WIDTH ) * 3 ])
             .unwrap()
             .as_mut_slice();
-
+    writeln!(uart0, "Check 2").unwrap();
     let streamer = hardware::display::DmaStreamer::new(dma.ch0, dma.ch1, display_buffer);
 
     let display_interface = hardware::display::SpiPioDmaInterface::new(
@@ -232,7 +232,7 @@ fn main() -> ! {
         spi_mosi.id().num,
         streamer,
     );
-
+    writeln!(uart0, "Check 4").unwrap();
     let display_reset = pins.gpio2.into_push_pull_output();
     let mut display = ili9341::Ili9341::new(
         display_interface,
@@ -265,9 +265,13 @@ fn main() -> ! {
         &mut right_button,
     );
     led_pin.set_high().unwrap();
-    writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
-    writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
+
+    let mut loop_counter: usize = 0;
     loop {
+        writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
+        writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
+        let start_time = timer.get_counter();
+
         display
             .draw_raw_iter(
                 0,
@@ -279,9 +283,19 @@ fn main() -> ! {
                 scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
+        let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
+        let diff = end_time - start_time;
+        let milliseconds = diff.to_millis();
+        writeln!(
+            uart0,
+            "Loop: {}, Time elapsed: {}:{}",
+            loop_counter,
+            milliseconds / 1000,
+            milliseconds % 1000
+        )
+        .unwrap();
 
-        writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
-        writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
+        loop_counter += 1;
     }
 }
 
