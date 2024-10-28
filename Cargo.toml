@@ -76,7 +76,7 @@ usb-device = "0.3.2"
 usbd-serial = "0.2.2"
 defmt-serial = "0.10.0"
 static_cell = "2.1.0"
-
+panic-probe = { version = "0.3.2", features = ["defmt"] }
 
 # cargo build/run --release
 [profile.release]

@@ -7,6 +7,7 @@ use alloc::{
     string::{String, ToString},
 };
 use const_lru::ConstLru;
+use defmt::info;
 pub struct SdRomManager<
     'a,
     D: embedded_sdmmc::BlockDevice,
@@ -92,6 +93,7 @@ impl<
         let value = match bank {
             Some(buffer) => buffer[index],
             None => {
+                info!("LOADING BANK: {}", index);
                 let buffer: Box<[u8; 0x4000]> = self.read_bank(seek_offset);
                 let result = buffer[index];
                 bank_lru.insert(seek_offset, buffer);

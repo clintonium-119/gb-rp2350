@@ -294,6 +294,8 @@ fn main() -> ! {
     loop {
         // writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
         // writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
+        defmt::info!("Free Mem: {}", ALLOCATOR.free());
+        defmt::info!("Used Mem: {}", ALLOCATOR.used());
         //   defmt::info!("START1 DFMT");
         let start_time = timer.get_counter();
 
