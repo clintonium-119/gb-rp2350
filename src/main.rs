@@ -34,8 +34,9 @@ use rp235x_hal::uart::{DataBits, StopBits, UartConfig};
 use rp235x_hal::{spi, Clock};
 use rp_hal::hal::dma::DMAExt;
 use rp_hal::hal::pio::PIOExt;
+
 // Alias for our HAL crate
-use core::fmt::Write;
+
 use rp_hal::hal;
 // Some things we need
 use embedded_alloc::Heap;
@@ -52,11 +53,30 @@ const XTAL_FREQ_HZ: u32 = 12_000_000u32;
 #[global_allocator]
 static ALLOCATOR: Heap = Heap::empty();
 
+static SERIAL: static_cell::StaticCell<
+    rp235x_hal::uart::UartPeripheral<
+        rp235x_hal::uart::Enabled,
+        rp235x_hal::pac::UART0,
+        (
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio0,
+                rp235x_hal::gpio::FunctionUart,
+                rp235x_hal::gpio::PullDown,
+            >,
+            rp235x_hal::gpio::Pin<
+                rp235x_hal::gpio::bank0::Gpio1,
+                rp235x_hal::gpio::FunctionUart,
+                rp235x_hal::gpio::PullDown,
+            >,
+        ),
+    >,
+> = static_cell::StaticCell::new();
+
 #[hal::entry]
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 300_000 + (0x4000 * 7);
+        const HEAP_SIZE: usize = 300_000 + (0x4000 * 6);
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -93,8 +113,7 @@ fn main() -> ! {
         asm::nop();
     }
 
-    let (clocks, mut timer) = clocks::configure_overclock(
-        pac.TIMER0,
+    let clocks = clocks::configure_overclock(
         XTAL_FREQ_HZ,
         pac.XOSC,
         pac.CLOCKS,
@@ -105,20 +124,25 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
+    let mut timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0> =
+        hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
 
-    /////////////////////UART!
+    ///////////////////UART!
     let uart0_pins = (
         // UART TX (characters sent from rp235x) on pin 4 (GPIO2) in Aux mode
         pins.gpio0.into_function(),
         // UART RX (characters received by rp235x) on pin 5 (GPIO3) in Aux mode
         pins.gpio1.into_function(),
     );
-    let mut uart0 = hal::uart::UartPeripheral::new(pac.UART0, uart0_pins, &mut pac.RESETS)
+    let uart0 = hal::uart::UartPeripheral::new(pac.UART0, uart0_pins, &mut pac.RESETS)
         .enable(
             UartConfig::new(115200.Hz(), DataBits::Eight, None, StopBits::One),
             clocks.peripheral_clock.freq(),
         )
         .unwrap();
+    defmt_serial::defmt_serial(SERIAL.init(uart0));
+
+    defmt::info!("START2");
 
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
@@ -167,10 +191,10 @@ fn main() -> ! {
     boot_rom_file.read(&mut *boot_rom_data).unwrap();
     boot_rom_file.close().unwrap();
 
-    let roms = gameboy::rom::SdRomManager::new("pkred.gb", root_dir, timer);
+    let roms = gameboy::rom::SdRomManager::new("sml.gb", root_dir, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
 
-    writeln!(uart0, "Loading game: {}", &gb_rom.title).unwrap();
+    //writeln!(uart0, "Loading game: {}", &gb_rom.title).unwrap();
     let cartridge = gb_rom.into_cartridge();
     let boot_rom = gb_core::hardware::boot_rom::Bootrom::new(Some(
         gb_core::hardware::boot_rom::BootromData::from_bytes(&*boot_rom_data),
@@ -203,7 +227,7 @@ fn main() -> ! {
         9,
         audio_buffer,
     );
-    writeln!(uart0, "Check 1").unwrap();
+    // writeln!(uart0, "Check 1").unwrap();
     let screen = GameboyLineBufferDisplay::new(timer);
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
@@ -219,7 +243,7 @@ fn main() -> ! {
         cortex_m::singleton!(: [u16;(SCREEN_WIDTH) * 3]  = [0u16; (SCREEN_WIDTH ) * 3 ])
             .unwrap()
             .as_mut_slice();
-    writeln!(uart0, "Check 2").unwrap();
+    // writeln!(uart0, "Check 2").unwrap();
     let streamer = hardware::display::DmaStreamer::new(dma.ch0, dma.ch1, display_buffer);
 
     let display_interface = hardware::display::SpiPioDmaInterface::new(
@@ -232,7 +256,7 @@ fn main() -> ! {
         spi_mosi.id().num,
         streamer,
     );
-    writeln!(uart0, "Check 4").unwrap();
+    // writeln!(uart0, "Check 4").unwrap();
     let display_reset = pins.gpio2.into_push_pull_output();
     let mut display = ili9341::Ili9341::new(
         display_interface,
@@ -268,8 +292,9 @@ fn main() -> ! {
 
     let mut loop_counter: usize = 0;
     loop {
-        writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
-        writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
+        // writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
+        // writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
+        //   defmt::info!("START1 DFMT");
         let start_time = timer.get_counter();
 
         display
@@ -286,14 +311,14 @@ fn main() -> ! {
         let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
         let diff = end_time - start_time;
         let milliseconds = diff.to_millis();
-        writeln!(
-            uart0,
-            "Loop: {}, Time elapsed: {}:{}",
-            loop_counter,
-            milliseconds / 1000,
-            milliseconds % 1000
-        )
-        .unwrap();
+        // writeln!(
+        //     uart0,
+        //     "Loop: {}, Time elapsed: {}:{}",
+        //     loop_counter,
+        //     milliseconds / 1000,
+        //     milliseconds % 1000
+        // )
+        // .unwrap();
 
         loop_counter += 1;
     }

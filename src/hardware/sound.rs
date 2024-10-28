@@ -8,7 +8,6 @@ use embedded_dma::ReadBuffer;
 use hal::dma::double_buffer::{Config as DConfig, Transfer as DTransfer};
 
 use crate::hal::dma::double_buffer::ReadNext;
-use defmt_rtt as _;
 use hal::dma::ReadTarget;
 use hal::dma::SingleChannel;
 type ToType<P, SM> = Tx<(P, SM), hal::dma::HalfWord>;

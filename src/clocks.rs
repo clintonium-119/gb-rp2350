@@ -79,7 +79,7 @@ pub const PLL_SYS_400MHZ: hal::pll::PLLConfig = hal::pll::PLLConfig {
     post_div2: 1,
 };
 pub fn configure_overclock(
-    timer: pac::TIMER0,
+    // timer: pac::TIMER0,
     xosc_crystal_freq: u32,
     xosc_dev: pac::XOSC,
     clocks_dev: pac::CLOCKS,
@@ -87,22 +87,15 @@ pub fn configure_overclock(
     pll_usb_dev: pac::PLL_USB,
     resets: &mut pac::RESETS,
     watchdog: &mut Watchdog,
-) -> Result<
-    (
-        ClocksManager,
-        rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0>,
-    ),
-    (),
-> {
+) -> Result<ClocksManager, ()> {
     let xosc = hal::xosc::setup_xosc_blocking(xosc_dev, xosc_crystal_freq.Hz()).unwrap();
 
     watchdog.enable_tick_generation((xosc_crystal_freq / 1_000_000) as u16);
 
     let mut clocks = ClocksManager::new(clocks_dev);
-    let mut timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0> =
-        hal::Timer::new_timer0(timer, resets, &clocks);
+    // let mut timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0> =
+    //     hal::Timer::new_timer0(timer, resets, &clocks);
 
-    timer.delay_ms(100);
     let pll_sys = hal::pll::setup_pll_blocking(
         pll_sys_dev,
         xosc.operating_frequency(),
@@ -128,5 +121,5 @@ pub fn configure_overclock(
 
     clocks.init_default(&xosc, &pll_sys, &pll_usb).unwrap();
 
-    Ok((clocks, timer))
+    Ok(clocks)
 }
