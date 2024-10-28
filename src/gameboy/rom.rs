@@ -7,7 +7,13 @@ use alloc::{
     string::{String, ToString},
 };
 use const_lru::ConstLru;
-use defmt::info;
+use defmt::debug;
+use embedded_sdmmc::RawFile;
+
+enum RomManagerState {
+    ROM_READ,
+    IDLE,
+}
 pub struct SdRomManager<
     'a,
     D: embedded_sdmmc::BlockDevice,
@@ -18,7 +24,8 @@ pub struct SdRomManager<
     const MAX_VOLUMES: usize,
 > {
     rom_name: String,
-    root_dir: RefCell<embedded_sdmmc::Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>>,
+    volume: RefCell<embedded_sdmmc::Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>>,
+    raw_rom_file: RefCell<Option<RawFile>>,
     bank_0: Box<[u8; 0x4000]>,
     bank_lru: RefCell<ConstLru<usize, Box<[u8; 0x4000]>, 9, u8>>,
     start_time: Instant,
@@ -36,9 +43,10 @@ impl<
 {
     pub fn new(
         rom_name: &str,
-        mut root_dir: embedded_sdmmc::Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+        mut volume: embedded_sdmmc::Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
         timer: crate::hal::Timer<DT>,
     ) -> Self {
+        let mut root_dir = volume.open_root_dir().unwrap();
         let mut rom_file = root_dir
             .open_file_in_dir(rom_name, embedded_sdmmc::Mode::ReadOnly)
             .unwrap();
@@ -46,12 +54,15 @@ impl<
         rom_file.seek_from_start(0u32).unwrap();
         rom_file.read(&mut *bank_0).unwrap();
         rom_file.close().unwrap();
+        root_dir.close().unwrap();
+
         let lru = ConstLru::new();
         let result: SdRomManager<'a, D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
             rom_name: rom_name.to_string(),
             bank_0: bank_0,
-            root_dir: RefCell::new(root_dir),
+            volume: RefCell::new(volume),
             bank_lru: RefCell::new(lru),
+            raw_rom_file: RefCell::new(None),
             start_time: timer.get_counter(),
             timer,
         };
@@ -59,8 +70,9 @@ impl<
         result
     }
     fn read_bank(&self, bank_offset: usize) -> Box<[u8; 0x4000]> {
-        let mut binding = self.root_dir.borrow_mut();
-        let mut file = binding
+        let mut volume = self.volume.borrow_mut();
+        let mut root_dir = volume.open_root_dir().unwrap();
+        let mut file = root_dir
             .open_file_in_dir(self.rom_name.as_str(), embedded_sdmmc::Mode::ReadOnly)
             .unwrap();
 
@@ -70,6 +82,7 @@ impl<
         file.read(&mut *buffer).unwrap();
 
         file.close().unwrap();
+        root_dir.close().unwrap();
         buffer
     }
 }
@@ -89,14 +102,24 @@ impl<
             return self.bank_0[index as usize];
         }
         let mut bank_lru = self.bank_lru.borrow_mut();
-        let bank = bank_lru.get(&seek_offset);
+        let bank = bank_lru.get(&(bank_number as usize));
         let value = match bank {
             Some(buffer) => buffer[index],
             None => {
-                info!("LOADING BANK: {}", bank_number);
+                debug!("LOADING BANK: {}", bank_number);
                 let buffer: Box<[u8; 0x4000]> = self.read_bank(seek_offset);
                 let result = buffer[index];
-                bank_lru.insert(seek_offset, buffer);
+                let unloaded_bank = bank_lru.insert(bank_number as usize, buffer);
+                if unloaded_bank.is_some() {
+                    match unloaded_bank.unwrap() {
+                        const_lru::InsertReplaced::LruEvicted(index, _) => {
+                            debug!("Unloaded bank: {}", index);
+                        }
+                        const_lru::InsertReplaced::OldValue(_) => {
+                            debug!("Unloaded bank: unknown");
+                        }
+                    }
+                }
                 result
             }
         };
@@ -110,7 +133,8 @@ impl<
     }
 
     fn save(&mut self, game_title: &str, bank_index: u8, bank: &[u8]) {
-        let mut root_directory = self.root_dir.borrow_mut();
+        let mut volume = self.volume.borrow_mut();
+        let mut root_directory = volume.open_root_dir().unwrap();
 
         if root_directory.find_directory_entry("saves").is_err() {
             root_directory.make_dir_in_dir("saves").unwrap();
@@ -140,7 +164,8 @@ impl<
     }
 
     fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
-        let mut root_directory = self.root_dir.borrow_mut();
+        let mut volume = self.volume.borrow_mut();
+        let mut root_directory = volume.open_root_dir().unwrap();
 
         if root_directory.find_directory_entry("saves").is_err() {
             root_directory.make_dir_in_dir("saves").unwrap();

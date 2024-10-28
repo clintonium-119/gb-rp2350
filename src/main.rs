@@ -177,7 +177,45 @@ fn main() -> ! {
     let sdcard = SdCard::new(exclusive_spi, timer);
     let mut volume_mgr = VolumeManager::new(sdcard, hardware::sdcard::DummyTimesource::default());
 
-    let mut volume0 = volume_mgr
+    let mut volume0: embedded_sdmmc::Volume<
+        '_,
+        SdCard<
+            embedded_hal_bus::spi::ExclusiveDevice<
+                spi::Spi<
+                    spi::Enabled,
+                    rp235x_hal::pac::SPI1,
+                    (
+                        rp235x_hal::gpio::Pin<
+                            rp235x_hal::gpio::bank0::Gpio15,
+                            rp235x_hal::gpio::FunctionSpi,
+                            rp235x_hal::gpio::PullDown,
+                        >,
+                        rp235x_hal::gpio::Pin<
+                            rp235x_hal::gpio::bank0::Gpio12,
+                            rp235x_hal::gpio::FunctionSpi,
+                            rp235x_hal::gpio::PullDown,
+                        >,
+                        rp235x_hal::gpio::Pin<
+                            rp235x_hal::gpio::bank0::Gpio14,
+                            rp235x_hal::gpio::FunctionSpi,
+                            rp235x_hal::gpio::PullDown,
+                        >,
+                    ),
+                >,
+                rp235x_hal::gpio::Pin<
+                    rp235x_hal::gpio::bank0::Gpio13,
+                    rp235x_hal::gpio::FunctionSio<rp235x_hal::gpio::SioOutput>,
+                    rp235x_hal::gpio::PullDown,
+                >,
+                rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0>,
+            >,
+            rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0>,
+        >,
+        hardware::sdcard::DummyTimesource,
+        4,
+        4,
+        1,
+    > = volume_mgr
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
 
@@ -190,8 +228,9 @@ fn main() -> ! {
     let mut boot_rom_data = Box::new([0u8; 0x100]);
     boot_rom_file.read(&mut *boot_rom_data).unwrap();
     boot_rom_file.close().unwrap();
+    root_dir.close().unwrap();
 
-    let roms = gameboy::rom::SdRomManager::new("pkred.gb", root_dir, timer);
+    let roms = gameboy::rom::SdRomManager::new("pkred.gb", volume0, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
 
     //writeln!(uart0, "Loading game: {}", &gb_rom.title).unwrap();
