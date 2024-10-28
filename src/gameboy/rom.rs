@@ -10,12 +10,7 @@ use const_lru::ConstLru;
 use defmt::debug;
 use embedded_sdmmc::RawFile;
 
-enum RomManagerState {
-    ROM_READ,
-    IDLE,
-}
 pub struct SdRomManager<
-    'a,
     D: embedded_sdmmc::BlockDevice,
     T: embedded_sdmmc::TimeSource,
     DT: TimerDevice,
@@ -24,7 +19,7 @@ pub struct SdRomManager<
     const MAX_VOLUMES: usize,
 > {
     rom_name: String,
-    volume: RefCell<embedded_sdmmc::Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>>,
+    volume_manager: RefCell<embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>>,
     raw_rom_file: RefCell<Option<RawFile>>,
     bank_0: Box<[u8; 0x4000]>,
     bank_lru: RefCell<ConstLru<usize, Box<[u8; 0x4000]>, 9, u8>>,
@@ -32,20 +27,22 @@ pub struct SdRomManager<
     timer: crate::hal::Timer<DT>,
 }
 impl<
-        'a,
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
-    > SdRomManager<'a, D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    > SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     pub fn new(
         rom_name: &str,
-        mut volume: embedded_sdmmc::Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+        mut volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
         timer: crate::hal::Timer<DT>,
     ) -> Self {
+        let mut volume = volume_manager
+            .open_volume(embedded_sdmmc::VolumeIdx(0))
+            .unwrap();
         let mut root_dir = volume.open_root_dir().unwrap();
         let mut rom_file = root_dir
             .open_file_in_dir(rom_name, embedded_sdmmc::Mode::ReadOnly)
@@ -55,12 +52,13 @@ impl<
         rom_file.read(&mut *bank_0).unwrap();
         rom_file.close().unwrap();
         root_dir.close().unwrap();
+        volume.close().unwrap();
 
         let lru = ConstLru::new();
-        let result: SdRomManager<'a, D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
+        let result: SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
             rom_name: rom_name.to_string(),
             bank_0: bank_0,
-            volume: RefCell::new(volume),
+            volume_manager: RefCell::new(volume_manager),
             bank_lru: RefCell::new(lru),
             raw_rom_file: RefCell::new(None),
             start_time: timer.get_counter(),
@@ -70,7 +68,10 @@ impl<
         result
     }
     fn read_bank(&self, bank_offset: usize) -> Box<[u8; 0x4000]> {
-        let mut volume = self.volume.borrow_mut();
+        let mut volume_manager = self.volume_manager.borrow_mut();
+        let mut volume = volume_manager
+            .open_volume(embedded_sdmmc::VolumeIdx(0))
+            .unwrap();
         let mut root_dir = volume.open_root_dir().unwrap();
         let mut file = root_dir
             .open_file_in_dir(self.rom_name.as_str(), embedded_sdmmc::Mode::ReadOnly)
@@ -87,7 +88,6 @@ impl<
     }
 }
 impl<
-        'a,
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
@@ -95,7 +95,7 @@ impl<
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
     > gb_core::hardware::rom::RomManager
-    for SdRomManager<'a, D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    for SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     fn read_from_offset(&self, seek_offset: usize, index: usize, bank_number: u8) -> u8 {
         if seek_offset == 0x0000 {
@@ -133,7 +133,10 @@ impl<
     }
 
     fn save(&mut self, game_title: &str, bank_index: u8, bank: &[u8]) {
-        let mut volume = self.volume.borrow_mut();
+        let mut volume_manager = self.volume_manager.borrow_mut();
+        let mut volume = volume_manager
+            .open_volume(embedded_sdmmc::VolumeIdx(0))
+            .unwrap();
         let mut root_directory = volume.open_root_dir().unwrap();
 
         if root_directory.find_directory_entry("saves").is_err() {
@@ -164,7 +167,10 @@ impl<
     }
 
     fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
-        let mut volume = self.volume.borrow_mut();
+        let mut volume_manager = self.volume_manager.borrow_mut();
+        let mut volume = volume_manager
+            .open_volume(embedded_sdmmc::VolumeIdx(0))
+            .unwrap();
         let mut root_directory = volume.open_root_dir().unwrap();
 
         if root_directory.find_directory_entry("saves").is_err() {
@@ -198,14 +204,13 @@ impl<
     }
 }
 impl<
-        'a,
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
-    > core::ops::Index<usize> for SdRomManager<'a, D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    > core::ops::Index<usize> for SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     type Output = u8;
 
@@ -214,7 +219,6 @@ impl<
     }
 }
 impl<
-        'a,
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
@@ -222,7 +226,7 @@ impl<
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
     > core::ops::Index<core::ops::Range<usize>>
-    for SdRomManager<'a, D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    for SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     type Output = [u8];
 
