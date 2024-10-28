@@ -313,15 +313,12 @@ fn main() -> ! {
         let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
         let diff = end_time - start_time;
         let milliseconds = diff.to_millis();
-        // writeln!(
-        //     uart0,
-        //     "Loop: {}, Time elapsed: {}:{}",
-        //     loop_counter,
-        //     milliseconds / 1000,
-        //     milliseconds % 1000
-        // )
-        // .unwrap();
-
+        defmt::info!(
+            "Loop: {}, Time elapsed: {}:{}",
+            loop_counter,
+            milliseconds / 1000,
+            milliseconds % 1000
+        );
         loop_counter += 1;
     }
 }
