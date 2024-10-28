@@ -84,7 +84,7 @@ impl<
     > gb_core::hardware::rom::RomManager
     for SdRomManager<'a, D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
-    fn read_from_offset(&self, seek_offset: usize, index: usize) -> u8 {
+    fn read_from_offset(&self, seek_offset: usize, index: usize, bank_number: u8) -> u8 {
         if seek_offset == 0x0000 {
             return self.bank_0[index as usize];
         }
@@ -93,7 +93,7 @@ impl<
         let value = match bank {
             Some(buffer) => buffer[index],
             None => {
-                info!("LOADING BANK: {}", index);
+                info!("LOADING BANK: {}", bank_number);
                 let buffer: Box<[u8; 0x4000]> = self.read_bank(seek_offset);
                 let result = buffer[index];
                 bank_lru.insert(seek_offset, buffer);

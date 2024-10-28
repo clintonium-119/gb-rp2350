@@ -191,7 +191,7 @@ fn main() -> ! {
     boot_rom_file.read(&mut *boot_rom_data).unwrap();
     boot_rom_file.close().unwrap();
 
-    let roms = gameboy::rom::SdRomManager::new("sml.gb", root_dir, timer);
+    let roms = gameboy::rom::SdRomManager::new("pkred.gb", root_dir, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
 
     //writeln!(uart0, "Loading game: {}", &gb_rom.title).unwrap();
