@@ -15,6 +15,7 @@ mod util;
 use alloc::boxed::Box;
 use cortex_m::asm;
 use embedded_hal::digital::OutputPin;
+use panic_probe as _;
 extern crate alloc;
 
 use embedded_sdmmc::{SdCard, VolumeManager};
@@ -26,9 +27,6 @@ use hal::fugit::RateExtU32;
 use hardware::display::ScreenScaler;
 
 use ili9341::{DisplaySize, DisplaySize240x320};
-// Ensure we halt the program on panic (if we don't mention this crate it won't
-// be linked)
-use panic_halt as _;
 
 use rp235x_hal::uart::{DataBits, StopBits, UartConfig};
 use rp235x_hal::{spi, Clock};

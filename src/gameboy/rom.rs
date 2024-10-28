@@ -1,5 +1,5 @@
 use crate::hal::timer::Instant;
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt::Debug};
 
 use crate::hal::timer::TimerDevice;
 use alloc::{
@@ -7,8 +7,8 @@ use alloc::{
     string::{String, ToString},
 };
 use const_lru::ConstLru;
-use defmt::debug;
-use embedded_sdmmc::RawFile;
+use defmt::{debug, info};
+use embedded_sdmmc::{Error, RawFile, RawVolume};
 
 pub struct SdRomManager<
     D: embedded_sdmmc::BlockDevice,
@@ -21,6 +21,7 @@ pub struct SdRomManager<
     rom_name: String,
     volume_manager: RefCell<embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>>,
     raw_rom_file: RefCell<Option<RawFile>>,
+    raw_volume: RefCell<Option<RawVolume>>,
     bank_0: Box<[u8; 0x4000]>,
     bank_lru: RefCell<ConstLru<usize, Box<[u8; 0x4000]>, 9, u8>>,
     start_time: Instant,
@@ -47,12 +48,18 @@ impl<
         let mut rom_file = root_dir
             .open_file_in_dir(rom_name, embedded_sdmmc::Mode::ReadOnly)
             .unwrap();
+
         let mut bank_0 = Box::new([0u8; 0x4000]);
         rom_file.seek_from_start(0u32).unwrap();
         rom_file.read(&mut *bank_0).unwrap();
-        rom_file.close().unwrap();
+        info!("Read file");
+        let raw_rom_file = rom_file.to_raw_file();
+        info!("To raw");
         root_dir.close().unwrap();
-        volume.close().unwrap();
+        info!("Close root_dir");
+        let raw_volume = volume.to_raw_volume();
+        //volume.close().unwrap();
+        info!("Close volume");
 
         let lru = ConstLru::new();
         let result: SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
@@ -60,7 +67,8 @@ impl<
             bank_0: bank_0,
             volume_manager: RefCell::new(volume_manager),
             bank_lru: RefCell::new(lru),
-            raw_rom_file: RefCell::new(None),
+            raw_volume: RefCell::new(Some(raw_volume)),
+            raw_rom_file: RefCell::new(Some(raw_rom_file)),
             start_time: timer.get_counter(),
             timer,
         };
@@ -69,21 +77,17 @@ impl<
     }
     fn read_bank(&self, bank_offset: usize) -> Box<[u8; 0x4000]> {
         let mut volume_manager = self.volume_manager.borrow_mut();
-        let mut volume = volume_manager
-            .open_volume(embedded_sdmmc::VolumeIdx(0))
-            .unwrap();
-        let mut root_dir = volume.open_root_dir().unwrap();
-        let mut file = root_dir
-            .open_file_in_dir(self.rom_name.as_str(), embedded_sdmmc::Mode::ReadOnly)
-            .unwrap();
+
+        let raw_file = self.raw_rom_file.take().unwrap();
+        let mut file = raw_file.to_file(&mut volume_manager);
 
         let mut buffer: Box<[u8; 0x4000]> = Box::new([0u8; 0x4000]);
 
         file.seek_from_start(bank_offset as u32).unwrap();
         file.read(&mut *buffer).unwrap();
 
-        file.close().unwrap();
-        root_dir.close().unwrap();
+        self.raw_rom_file.replace(Some(file.to_raw_file()));
+
         buffer
     }
 }
@@ -134,9 +138,11 @@ impl<
 
     fn save(&mut self, game_title: &str, bank_index: u8, bank: &[u8]) {
         let mut volume_manager = self.volume_manager.borrow_mut();
-        let mut volume = volume_manager
-            .open_volume(embedded_sdmmc::VolumeIdx(0))
-            .unwrap();
+        let mut volume = self
+            .raw_volume
+            .take()
+            .unwrap()
+            .to_volume(&mut volume_manager);
         let mut root_directory = volume.open_root_dir().unwrap();
 
         if root_directory.find_directory_entry("saves").is_err() {
@@ -164,13 +170,21 @@ impl<
             .unwrap();
 
         bank_file.write(bank).unwrap();
+        bank_file.close().unwrap();
+        game_directory.close().unwrap();
+        save_directory.close().unwrap();
+        root_directory.close().unwrap();
+
+        self.raw_volume.replace(Some(volume.to_raw_volume()));
     }
 
     fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
         let mut volume_manager = self.volume_manager.borrow_mut();
-        let mut volume = volume_manager
-            .open_volume(embedded_sdmmc::VolumeIdx(0))
-            .unwrap();
+        let mut volume = self
+            .raw_volume
+            .take()
+            .unwrap()
+            .to_volume(&mut volume_manager);
         let mut root_directory = volume.open_root_dir().unwrap();
 
         if root_directory.find_directory_entry("saves").is_err() {
@@ -200,7 +214,14 @@ impl<
                 .unwrap();
 
             bank_file.read(bank).unwrap();
+            bank_file.close().unwrap();
         }
+
+        game_directory.close().unwrap();
+        save_directory.close().unwrap();
+        root_directory.close().unwrap();
+
+        self.raw_volume.replace(Some(volume.to_raw_volume()));
     }
 }
 impl<
