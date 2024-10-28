@@ -1,5 +1,5 @@
 use crate::hal::timer::Instant;
-use core::{cell::RefCell, fmt::Debug};
+use core::cell::RefCell;
 
 use crate::hal::timer::TimerDevice;
 use alloc::{
@@ -8,7 +8,7 @@ use alloc::{
 };
 use const_lru::ConstLru;
 use defmt::{debug, info};
-use embedded_sdmmc::{Error, RawFile, RawVolume};
+use embedded_sdmmc::{RawFile, RawVolume};
 
 pub struct SdRomManager<
     D: embedded_sdmmc::BlockDevice,
@@ -18,7 +18,7 @@ pub struct SdRomManager<
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
 > {
-    rom_name: String,
+    _rom_name: String,
     volume_manager: RefCell<embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>>,
     raw_rom_file: RefCell<Option<RawFile>>,
     raw_volume: RefCell<Option<RawVolume>>,
@@ -52,18 +52,13 @@ impl<
         let mut bank_0 = Box::new([0u8; 0x4000]);
         rom_file.seek_from_start(0u32).unwrap();
         rom_file.read(&mut *bank_0).unwrap();
-        info!("Read file");
         let raw_rom_file = rom_file.to_raw_file();
-        info!("To raw");
         root_dir.close().unwrap();
-        info!("Close root_dir");
         let raw_volume = volume.to_raw_volume();
-        //volume.close().unwrap();
-        info!("Close volume");
 
         let lru = ConstLru::new();
         let result: SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
-            rom_name: rom_name.to_string(),
+            _rom_name: rom_name.to_string(),
             bank_0: bank_0,
             volume_manager: RefCell::new(volume_manager),
             bank_lru: RefCell::new(lru),
