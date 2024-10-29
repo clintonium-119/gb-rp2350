@@ -1,5 +1,3 @@
-use core::u16;
-
 use alloc::vec::Vec;
 
 pub struct ScreenScaler<

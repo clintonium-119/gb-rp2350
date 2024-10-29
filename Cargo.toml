@@ -29,7 +29,7 @@ display-interface = "0.5"
 embedded-graphics-core = "0.4.0"
 embedded-graphics = "0.8.1"
 display-interface-spi = "0.5.0"
-gb-core = { path = "C:\\Users\\pablo\\projects\\rust-gb\\gb-core" }
+gb-core = { path = "C:\\Users\\pablo\\projects\\rust-gb\\gb-core", default-features = false }
 embedded-hal-bus = { version = "0.2.0", features = ["defmt-03"] }
 embedded-io = "0.6.1"
 # We aren't using this, but embedded-hal-bus 0.2 unconditionally requires atomics.

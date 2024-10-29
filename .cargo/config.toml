@@ -92,4 +92,4 @@ runner = "picotool load -u -v -x -t elf"
 
 
 [env]
-DEFMT_LOG = "info"
+DEFMT_LOG = "debug"
