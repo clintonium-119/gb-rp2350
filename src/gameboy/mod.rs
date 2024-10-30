@@ -8,6 +8,7 @@ use rp235x_hal::timer::TimerDevice;
 pub mod audio;
 pub mod display;
 pub mod rom;
+pub mod static_rom;
 
 pub trait GameboyButtonHandler<'a> {
     fn handle_button_clicks<SC: Screen>(&mut self, gameboy: &mut GameBoy<'a, SC>);

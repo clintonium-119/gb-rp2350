@@ -15,6 +15,7 @@ mod util;
 use alloc::boxed::Box;
 use cortex_m::asm;
 use embedded_hal::digital::OutputPin;
+use embedded_sdmmc::sdcard::AcquireOpts;
 use panic_probe as _;
 extern crate alloc;
 
@@ -167,14 +168,20 @@ fn main() -> ! {
     let spi = spi.init(
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
-        400.kHz(), // card initialization happens at low baud rate
+        3.MHz(),
         embedded_hal::spi::MODE_0,
     );
 
-    let exclusive_spi = embedded_hal_bus::spi::ExclusiveDevice::new(spi, spi_cs, timer).unwrap();
-    let sdcard = SdCard::new(exclusive_spi, timer);
+    let exclusive_spi = embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(spi, spi_cs).unwrap();
+    let sdcard = SdCard::new_with_options(
+        exclusive_spi,
+        timer,
+        AcquireOpts {
+            acquire_retries: 100,
+            use_crc: true,
+        },
+    );
     let mut volume_mgr = VolumeManager::new(sdcard, hardware::sdcard::DummyTimesource::default());
-
     let mut volume0 = volume_mgr
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
@@ -191,7 +198,10 @@ fn main() -> ! {
     root_dir.close().unwrap();
     volume0.close().unwrap();
 
-    let roms = gameboy::rom::SdRomManager::new("sml.gb", volume_mgr, timer);
+    //let game_rom = include_bytes!("C:\\roms\\pkred.gb");
+    //let roms = gameboy::static_rom::StaticRomManager::new(game_rom, volume_mgr, timer);
+    let roms = gameboy::rom::SdRomManager::new("pkred.gb", volume_mgr, timer);
+
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
 
     //writeln!(uart0, "Loading game: {}", &gb_rom.title).unwrap();

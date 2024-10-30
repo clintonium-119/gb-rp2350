@@ -7,7 +7,7 @@ use alloc::{
     string::{String, ToString},
 };
 use const_lru::ConstLru;
-use defmt::{debug, info};
+use defmt::{debug, info, warn};
 use embedded_sdmmc::{RawFile, RawVolume};
 
 pub struct SdRomManager<
@@ -71,6 +71,22 @@ impl<
         result
     }
     fn read_bank(&self, bank_offset: usize) -> Box<[u8; 0x4000]> {
+        let mut result = None;
+        for _i in 0..4 {
+            let inner_result = self.internal_read_bank(bank_offset);
+            if inner_result.is_ok() {
+                result = Some(inner_result.unwrap());
+                break;
+            }
+            warn!("Failed to read rom, retrying");
+        }
+        result.unwrap()
+    }
+
+    fn internal_read_bank(
+        &self,
+        bank_offset: usize,
+    ) -> Result<Box<[u8; 0x4000]>, embedded_sdmmc::Error<D::Error>> {
         let mut volume_manager = self.volume_manager.borrow_mut();
 
         let raw_file = self.raw_rom_file.take().unwrap();
@@ -79,11 +95,11 @@ impl<
         let mut buffer: Box<[u8; 0x4000]> = Box::new([0u8; 0x4000]);
 
         file.seek_from_start(bank_offset as u32).unwrap();
-        file.read(&mut *buffer).unwrap();
+        let read_result = file.read(&mut *buffer);
 
         self.raw_rom_file.replace(Some(file.to_raw_file()));
-
-        buffer
+        read_result?;
+        Ok(buffer)
     }
 }
 impl<
