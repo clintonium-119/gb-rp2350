@@ -106,7 +106,11 @@ impl<
                 result = Some(inner_result.unwrap());
                 break;
             }
-            warn!("Failed to read rom, retrying");
+            let error = inner_result.err().take().unwrap();
+            warn!(
+                "Failed to read rom, retrying, {}",
+                alloc::format!("{:?}", error).as_str()
+            );
             self.timer.delay_ms(200);
         }
         result.unwrap();
