@@ -198,11 +198,11 @@ fn main() -> ! {
     root_dir.close().unwrap();
     volume0.close().unwrap();
 
-    //let game_rom = include_bytes!("C:\\roms\\pkred.gb");
-    //let roms = gameboy::static_rom::StaticRomManager::new(game_rom, volume_mgr, timer);
-    let roms = gameboy::rom::SdRomManager::new("pkred.gb", volume_mgr, timer);
+    let game_rom = include_bytes!("C:\\roms\\pkred.gb");
+    let rom_manager = gameboy::static_rom::StaticRomManager::new(game_rom, volume_mgr, timer);
+    //let rom_manager = gameboy::rom::SdRomManager::new("pkred.gb", volume_mgr, timer);
 
-    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(roms);
+    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
 
     //writeln!(uart0, "Loading game: {}", &gb_rom.title).unwrap();
     let cartridge = gb_rom.into_cartridge();

@@ -1,4 +1,5 @@
 use defmt::{info, warn};
+use embedded_hal::delay::DelayNs;
 
 use crate::hal::timer::Instant;
 use crate::hal::timer::TimerDevice;
@@ -99,13 +100,14 @@ impl<
 
     fn save(&mut self, game_title: &str, bank_index: u8, bank: &[u8]) {
         let mut result = None;
-        for _i in 0..4 {
+        for _i in 0..15 {
             let inner_result = self.save_internal(game_title, bank_index, bank);
             if inner_result.is_ok() {
                 result = Some(inner_result.unwrap());
                 break;
             }
             warn!("Failed to read rom, retrying");
+            self.timer.delay_ms(200);
         }
         result.unwrap();
     }
@@ -113,6 +115,7 @@ impl<
     fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
         info!("Loading ram bank: {}", bank_index);
         let mut volume_manager = self.volume_manager.borrow_mut();
+
         let mut volume = volume_manager
             .open_volume(embedded_sdmmc::VolumeIdx(0))
             .unwrap();

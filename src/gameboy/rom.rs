@@ -23,7 +23,7 @@ pub struct SdRomManager<
     raw_rom_file: RefCell<Option<RawFile>>,
     raw_volume: RefCell<Option<RawVolume>>,
     bank_0: Box<[u8; 0x4000]>,
-    bank_lru: RefCell<ConstLru<usize, Box<[u8; 0x4000]>, 10, u8>>,
+    bank_lru: RefCell<ConstLru<u8, Box<[u8; 0x4000]>, 10, u8>>,
     start_time: Instant,
     timer: crate::hal::Timer<DT>,
 }
@@ -117,14 +117,14 @@ impl<
             return self.bank_0[index as usize];
         }
         let mut bank_lru = self.bank_lru.borrow_mut();
-        let bank = bank_lru.get(&(bank_number as usize));
+        let bank = bank_lru.get(&(bank_number));
         let value = match bank {
             Some(buffer) => buffer[index],
             None => {
                 info!("LOADING BANK: {}", bank_number);
                 let buffer: Box<[u8; 0x4000]> = self.read_bank(seek_offset);
                 let result = buffer[index];
-                let unloaded_bank = bank_lru.insert(bank_number as usize, buffer);
+                let unloaded_bank = bank_lru.insert(bank_number, buffer);
                 if unloaded_bank.is_some() {
                     match unloaded_bank.unwrap() {
                         const_lru::InsertReplaced::LruEvicted(index, _) => {
