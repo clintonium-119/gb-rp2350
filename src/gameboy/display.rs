@@ -1,11 +1,13 @@
 use crate::hal::timer::Instant;
 use crate::hal::timer::TimerDevice;
 use alloc::boxed::Box;
+use embedded_graphics::pixelcolor::raw::RawU16;
+use embedded_graphics::pixelcolor::Rgb565;
 use embedded_hal::delay::DelayNs;
 use gb_core::hardware::Screen;
 const NANOS_IN_VSYNC: u64 = ((1.0 / 60.0) * 1000000000.0) as u64;
 pub struct GameboyLineBufferDisplay<D: TimerDevice> {
-    pub line_buffer: Box<[u16; 160]>,
+    pub line_buffer: Box<[Rgb565; 160]>,
     pub line_complete: bool,
     pub turn_off: bool,
     time_counter: Instant,
@@ -15,7 +17,7 @@ pub struct GameboyLineBufferDisplay<D: TimerDevice> {
 impl<D: TimerDevice> GameboyLineBufferDisplay<D> {
     pub fn new(delay: crate::hal::Timer<D>) -> Self {
         Self {
-            line_buffer: Box::new([0; 160]),
+            line_buffer: Box::new([Rgb565::default(); 160]),
             line_complete: false,
             turn_off: false,
             time_counter: delay.get_counter(),
@@ -39,7 +41,7 @@ impl<D: TimerDevice> Screen for GameboyLineBufferDisplay<D> {
             + ((color.green as u16 & 0b11111100) << 3)
             + (color.blue as u16 >> 3);
 
-        self.line_buffer[x as usize] = encoded_color;
+        self.line_buffer[x as usize] = Rgb565::from(RawU16::new(encoded_color));
     }
     fn scanline_complete(&mut self, _y: u8, _skip: bool) {
         self.line_complete = true;

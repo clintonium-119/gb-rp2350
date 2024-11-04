@@ -7,13 +7,15 @@ use alloc::{
     string::{String, ToString},
 };
 use const_lru::ConstLru;
-use defmt::{debug, info, warn};
+use defmt::{info, warn};
+use embedded_hal::delay::DelayNs;
 use embedded_sdmmc::{RawFile, RawVolume};
 
 pub struct SdRomManager<
     D: embedded_sdmmc::BlockDevice,
     T: embedded_sdmmc::TimeSource,
     DT: TimerDevice,
+    const ROM_CACHE_SIZE: usize,
     const MAX_DIRS: usize,
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
@@ -23,18 +25,19 @@ pub struct SdRomManager<
     raw_rom_file: RefCell<Option<RawFile>>,
     raw_volume: RefCell<Option<RawVolume>>,
     bank_0: Box<[u8; 0x4000]>,
-    bank_lru: RefCell<ConstLru<u8, Box<[u8; 0x4000]>, 10, u8>>,
+    bank_lru: RefCell<ConstLru<u8, Box<[u8; 0x4000]>, ROM_CACHE_SIZE, u8>>,
     start_time: Instant,
-    timer: crate::hal::Timer<DT>,
+    timer: RefCell<crate::hal::Timer<DT>>,
 }
 impl<
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
+        const ROM_CACHE_SIZE: usize,
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
-    > SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    > SdRomManager<D, T, DT, ROM_CACHE_SIZE, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     pub fn new(
         rom_name: &str,
@@ -57,16 +60,18 @@ impl<
         let raw_volume = volume.to_raw_volume();
 
         let lru = ConstLru::new();
-        let result: SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
-            _rom_name: rom_name.to_string(),
-            bank_0: bank_0,
-            volume_manager: RefCell::new(volume_manager),
-            bank_lru: RefCell::new(lru),
-            raw_volume: RefCell::new(Some(raw_volume)),
-            raw_rom_file: RefCell::new(Some(raw_rom_file)),
-            start_time: timer.get_counter(),
-            timer,
-        };
+
+        let result: SdRomManager<D, T, DT, ROM_CACHE_SIZE, MAX_DIRS, MAX_FILES, MAX_VOLUMES> =
+            Self {
+                _rom_name: rom_name.to_string(),
+                bank_0: bank_0,
+                volume_manager: RefCell::new(volume_manager),
+                bank_lru: RefCell::new(lru),
+                raw_volume: RefCell::new(Some(raw_volume)),
+                raw_rom_file: RefCell::new(Some(raw_rom_file)),
+                start_time: timer.get_counter(),
+                timer: RefCell::new(timer),
+            };
 
         result
     }
@@ -78,7 +83,12 @@ impl<
                 result = Some(inner_result.unwrap());
                 break;
             }
-            warn!("Failed to read rom, retrying");
+            let error = inner_result.err().take().unwrap();
+            warn!(
+                "Failed to read rom, retrying, {}",
+                defmt::Debug2Format(&error)
+            );
+            self.timer.borrow_mut().delay_ms(200);
         }
         result.unwrap()
     }
@@ -106,11 +116,12 @@ impl<
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
+        const ROM_CACHE_SIZE: usize,
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
     > gb_core::hardware::rom::RomManager
-    for SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    for SdRomManager<D, T, DT, ROM_CACHE_SIZE, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     fn read_from_offset(&self, seek_offset: usize, index: usize, bank_number: u8) -> u8 {
         if seek_offset == 0x0000 {
@@ -142,7 +153,7 @@ impl<
     }
 
     fn clock(&self) -> u64 {
-        let current_time = self.timer.get_counter();
+        let current_time = self.timer.borrow().get_counter();
         let diff = current_time - self.start_time;
         diff.to_micros()
     }
@@ -239,10 +250,12 @@ impl<
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
+        const ROM_CACHE_SIZE: usize,
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
-    > core::ops::Index<usize> for SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    > core::ops::Index<usize>
+    for SdRomManager<D, T, DT, ROM_CACHE_SIZE, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     type Output = u8;
 
@@ -254,11 +267,12 @@ impl<
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
+        const ROM_CACHE_SIZE: usize,
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
     > core::ops::Index<core::ops::Range<usize>>
-    for SdRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    for SdRomManager<D, T, DT, ROM_CACHE_SIZE, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     type Output = [u8];
 

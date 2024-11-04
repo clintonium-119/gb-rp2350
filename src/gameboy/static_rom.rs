@@ -109,7 +109,7 @@ impl<
             let error = inner_result.err().take().unwrap();
             warn!(
                 "Failed to read rom, retrying, {}",
-                alloc::format!("{:?}", error).as_str()
+                defmt::Debug2Format(&error)
             );
             self.timer.delay_ms(200);
         }

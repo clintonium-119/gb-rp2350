@@ -93,3 +93,8 @@ runner = "picotool load -u -v -x -t elf"
 
 [env]
 DEFMT_LOG = "debug"
+
+
+FROM_SD_CARD = "false"
+ROM_PATH = "C:\\roms\\pkred.gb"
+BOOT_ROM_PATH = "C:\\roms\\dmg_boot.bin"

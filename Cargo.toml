@@ -19,16 +19,12 @@ rust-version = "1.77"
 version = "0.1.0"
 
 [dependencies]
-
-ili9341 = { version = "0.6.0", features = [
-    "embedded-graphics-core",
-    "graphics",
-], default-features = false }
 byte-slice-cast = { version = "1.2.2", default-features = false }
 display-interface = "0.5"
 embedded-graphics-core = "0.4.0"
 embedded-graphics = "0.8.1"
 display-interface-spi = "0.5.0"
+mipidsi = "0.8.0"
 gb-core = { path = "C:\\Users\\pablo\\projects\\rust-gb\\gb-core", default-features = false }
 embedded-hal-bus = { version = "0.2.0", features = ["defmt-03"] }
 embedded-io = "0.6.1"
@@ -78,7 +74,10 @@ usbd-serial = "0.2.2"
 defmt-serial = "0.10.0"
 static_cell = "2.1.0"
 panic-probe = { version = "0.3.2", features = ["defmt", "print-defmt"] }
+const_env = "0.1.2"
 
+[build-dependencies]
+dotenv = "0.15.0"
 # cargo build/run --release
 [profile.release]
 codegen-units = 1
@@ -95,3 +94,7 @@ debug = false
 debug-assertions = false
 opt-level = 0
 overflow-checks = false
+
+
+[features]
+sdcard = []

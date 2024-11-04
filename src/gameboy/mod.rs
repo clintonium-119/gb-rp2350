@@ -1,6 +1,7 @@
 use core::{convert::Infallible, marker::PhantomData};
 
 use display::GameboyLineBufferDisplay;
+use embedded_graphics::pixelcolor::Rgb565;
 use embedded_hal::digital::InputPin;
 use gb_core::{gameboy::GameBoy, hardware::Screen};
 use rp235x_hal::timer::TimerDevice;
@@ -42,7 +43,7 @@ where
     'b: 'c,
     'c: 'b,
 {
-    type Item = u16;
+    type Item = Rgb565;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

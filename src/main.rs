@@ -8,14 +8,13 @@ mod hardware;
 
 mod rp_hal;
 
-mod spi_device;
-
 mod util;
 
 use alloc::boxed::Box;
 use cortex_m::asm;
 use embedded_hal::digital::OutputPin;
 use embedded_sdmmc::sdcard::AcquireOpts;
+use mipidsi::options::{Orientation, Rotation};
 use panic_probe as _;
 extern crate alloc;
 
@@ -26,8 +25,6 @@ use gb_core::gameboy::GameBoy;
 use hal::fugit::RateExtU32;
 
 use hardware::display::ScreenScaler;
-
-use ili9341::{DisplaySize, DisplaySize240x320};
 
 use rp235x_hal::uart::{DataBits, StopBits, UartConfig};
 use rp235x_hal::{spi, Clock};
@@ -141,7 +138,7 @@ fn main() -> ! {
         .unwrap();
     defmt_serial::defmt_serial(SERIAL.init(uart0));
 
-    defmt::info!("START2");
+    defmt::info!("Console Start");
 
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
@@ -150,10 +147,11 @@ fn main() -> ! {
     let (mut pio_1, sm_1_0, _, _, _) = pac.PIO1.split(&mut pac.RESETS);
     let dma = pac.DMA.split(&mut pac.RESETS);
 
-    const SCREEN_WIDTH: usize =
-        (<DisplaySize240x320 as DisplaySize>::WIDTH as f32 / 1.0f32) as usize;
-    const SCREEN_HEIGHT: usize =
-        (<DisplaySize240x320 as DisplaySize>::HEIGHT as f32 / 1.0f32) as usize;
+    const SCREEN_WIDTH: u16 = 240 as u16;
+    const SCREEN_HEIGHT: u16 = 320 as u16;
+    const GB_RENDER_WIDTH: usize = (SCREEN_WIDTH as f32 / 1.0f32) as usize;
+    const GB_RENDER_HEIGHT: usize = (SCREEN_HEIGHT as f32 / 1.0f32) as usize;
+
     ///////////////////////////////SD CARD
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
         pins.gpio14.into_function::<hal::gpio::FunctionSpi>();
@@ -168,7 +166,7 @@ fn main() -> ! {
     let spi = spi.init(
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
-        3.MHz(),
+        400.kHz(),
         embedded_hal::spi::MODE_0,
     );
 
@@ -237,23 +235,23 @@ fn main() -> ! {
         9,
         audio_buffer,
     );
-    // writeln!(uart0, "Check 1").unwrap();
+
     let screen = GameboyLineBufferDisplay::new(timer);
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
     //SCREEN
-    let screen_data_command_pin = pins.gpio3.into_push_pull_output();
+    let screen_data_command_pin = pins.gpio7.into_push_pull_output();
 
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio5.into_function::<hal::gpio::FunctionPio0>();
-    let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
         pins.gpio4.into_function::<hal::gpio::FunctionPio0>();
+    let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+        pins.gpio5.into_function::<hal::gpio::FunctionPio0>();
 
     let display_buffer: &'static mut [u16] =
-        cortex_m::singleton!(: [u16;(SCREEN_WIDTH) * 3]  = [0u16; (SCREEN_WIDTH ) * 3 ])
+        cortex_m::singleton!(: [u16;(GB_RENDER_WIDTH) * 3]  = [0u16; (GB_RENDER_WIDTH ) * 3 ])
             .unwrap()
             .as_mut_slice();
-    // writeln!(uart0, "Check 2").unwrap();
+
     let streamer = hardware::display::DmaStreamer::new(dma.ch0, dma.ch1, display_buffer);
 
     let display_interface = hardware::display::SpiPioDmaInterface::new(
@@ -266,18 +264,21 @@ fn main() -> ! {
         spi_mosi.id().num,
         streamer,
     );
-    // writeln!(uart0, "Check 4").unwrap();
-    let display_reset = pins.gpio2.into_push_pull_output();
-    let mut display = ili9341::Ili9341::new(
-        display_interface,
-        display_reset,
-        &mut timer,
-        ili9341::Orientation::LandscapeFlipped,
-        ili9341::DisplaySize240x320,
-    )
-    .unwrap();
 
-    let scaler: ScreenScaler<144, 160, { SCREEN_WIDTH }, { SCREEN_HEIGHT }> = ScreenScaler::new();
+    let display_reset = pins.gpio8.into_push_pull_output();
+
+    let mut display = mipidsi::Builder::new(mipidsi::models::ILI9341Rgb565, display_interface)
+        .reset_pin(display_reset)
+        .display_size(SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16)
+        .orientation(Orientation {
+            rotation: Rotation::Deg90,
+            mirrored: true,
+        })
+        .init(&mut timer)
+        .unwrap();
+
+    let scaler: ScreenScaler<144, 160, { GB_RENDER_WIDTH }, { GB_RENDER_HEIGHT }> =
+        ScreenScaler::new();
 
     ////////////////////// JOYPAD
     let mut b_button = pins.gpio16.into_pull_up_input().into_dyn_pin();
@@ -302,26 +303,22 @@ fn main() -> ! {
 
     let mut loop_counter: usize = 0;
     loop {
-        // writeln!(uart0, "Free Mem: {}", ALLOCATOR.free()).unwrap();
-        // writeln!(uart0, "Used Mem: {}", ALLOCATOR.used()).unwrap();
         defmt::info!("Free Mem: {}", ALLOCATOR.free());
         defmt::info!("Used Mem: {}", ALLOCATOR.used());
-        //   defmt::info!("START1 DFMT");
+
         let start_time = timer.get_counter();
 
         display
-            .draw_raw_iter(
+            .set_pixels(
                 0,
                 0,
-                // (160 - 1) as u16,
-                // (144 - 1) as u16,
-                (SCREEN_HEIGHT - 1) as u16,
-                (SCREEN_WIDTH - 1) as u16,
+                (GB_RENDER_HEIGHT - 1) as u16,
+                (GB_RENDER_WIDTH - 1) as u16,
                 scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
         let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
-        let diff = end_time - start_time;
+        let diff: fugit::Duration<u64, 1, 1000000> = end_time - start_time;
         let milliseconds = diff.to_millis();
         defmt::info!(
             "Loop: {}, Time elapsed: {}:{}",
@@ -339,7 +336,7 @@ fn main() -> ! {
 pub static PICOTOOL_ENTRIES: [hal::binary_info::EntryAddr; 5] = [
     hal::binary_info::rp_cargo_bin_name!(),
     hal::binary_info::rp_cargo_version!(),
-    hal::binary_info::rp_program_description!(c"SPI Example"),
+    hal::binary_info::rp_program_description!(c"gb-rp2350"),
     hal::binary_info::rp_cargo_homepage_url!(),
     hal::binary_info::rp_program_build_attribute!(),
 ];
