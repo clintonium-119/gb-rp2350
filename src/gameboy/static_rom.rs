@@ -87,6 +87,7 @@ impl<
     > gb_core::hardware::rom::RomManager
     for StaticRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
+    #[inline(always)]
     fn read_from_offset(&self, seek_offset: usize, index: usize, _bank_number: u8) -> u8 {
         let address = seek_offset + index;
         self.rom[address]

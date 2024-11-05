@@ -1,7 +1,7 @@
 [package]
 authors = ["The rp-rs Developers"]
 categories = ["embedded", "hardware-support", "no-std", "no-std::no-alloc"]
-description = "Examples for the rp235x-hal crate"
+description = "Gameboy emulator for the rp2350"
 edition = "2021"
 homepage = "https://github.com/rp-rs/rp-hal"
 keywords = [
@@ -13,7 +13,7 @@ keywords = [
     "embedded-hal",
 ]
 license = "MIT OR Apache-2.0"
-name = "rp235x-hal-examples"
+name = "gb-rp2350"
 repository = "https://github.com/rp-rs/rp-hal"
 rust-version = "1.77"
 version = "0.1.0"
@@ -78,7 +78,6 @@ const_env = "0.1.2"
 
 [build-dependencies]
 dotenv = "0.15.0"
-# cargo build/run --release
 [profile.release]
 codegen-units = 1
 debug = false

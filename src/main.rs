@@ -14,7 +14,7 @@ use alloc::boxed::Box;
 use cortex_m::asm;
 use embedded_hal::digital::OutputPin;
 use embedded_sdmmc::sdcard::AcquireOpts;
-use gb_core::hardware::boot_rom::{Bootrom, BootromData};
+use gb_core::hardware::boot_rom::Bootrom;
 use gb_core::hardware::cartridge::Cartridge;
 use mipidsi::options::{Orientation, Rotation};
 use panic_probe as _;
@@ -127,12 +127,7 @@ fn main() -> ! {
         hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
 
     ///////////////////UART!
-    let uart0_pins = (
-        // UART TX (characters sent from rp235x) on pin 4 (GPIO2) in Aux mode
-        pins.gpio0.into_function(),
-        // UART RX (characters received by rp235x) on pin 5 (GPIO3) in Aux mode
-        pins.gpio1.into_function(),
-    );
+    let uart0_pins = (pins.gpio0.into_function(), pins.gpio1.into_function());
     let uart0 = hal::uart::UartPeripheral::new(pac.UART0, uart0_pins, &mut pac.RESETS)
         .enable(
             UartConfig::new(115200.Hz(), DataBits::Eight, None, StopBits::One),

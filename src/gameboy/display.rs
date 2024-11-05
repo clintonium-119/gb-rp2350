@@ -36,6 +36,7 @@ impl<D: TimerDevice> Screen for GameboyLineBufferDisplay<D> {
         //todo!()
     }
 
+    #[inline(always)]
     fn set_pixel(&mut self, x: u8, _y: u8, color: gb_core::hardware::color_palette::Color) {
         let encoded_color = ((color.red as u16 & 0b11111000) << 8)
             + ((color.green as u16 & 0b11111100) << 3)

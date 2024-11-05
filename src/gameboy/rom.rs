@@ -75,6 +75,7 @@ impl<
 
         result
     }
+    //   #[inline(always)]
     fn read_bank(&self, bank_offset: usize) -> Box<[u8; 0x4000]> {
         let mut result = None;
         for _i in 0..4 {
@@ -93,6 +94,7 @@ impl<
         result.unwrap()
     }
 
+    #[inline(always)]
     fn internal_read_bank(
         &self,
         bank_offset: usize,
@@ -123,6 +125,7 @@ impl<
     > gb_core::hardware::rom::RomManager
     for SdRomManager<D, T, DT, ROM_CACHE_SIZE, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
+    #[inline(always)]
     fn read_from_offset(&self, seek_offset: usize, index: usize, bank_number: u8) -> u8 {
         if seek_offset == 0x0000 {
             return self.bank_0[index as usize];
