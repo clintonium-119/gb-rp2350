@@ -29,13 +29,43 @@ fn main() {
 
     let rom_path = std::env::var("ROM_PATH").expect("ROM_PATH needs to be set");
     println!("cargo:rustc-env=ROM_PATH={}", rom_path);
-    let boot_rom_path = std::env::var("BOOT_ROM_PATH").expect("BOOT_ROM_PATH needs to be set");
-    println!("cargo:rustc-env=BOOT_ROM_PATH={}", boot_rom_path);
-
-    if let Ok(value) = env::var("FROM_SD_CARD") {
-        if value == "true" {
-            // Set a cfg flag for conditional compilation
-            println!("cargo:rustc-cfg=sdcard");
+    let rom_location = std::env::var("ROM_LOCATION").expect("ROM_LOCATION needs to be set");
+    match rom_location.as_str() {
+        "SDCARD" => {
+            println!("cargo:rustc-cfg=feature=\"sdcard_rom\"");
+        }
+        "FLASH" => {
+            println!("cargo:rustc-cfg=feature=\"flash_rom\"");
+        }
+        _ => {
+            panic!("Wrong value for ROM_LOCATION: {}", rom_location);
         }
     }
+
+    let boot_rom_location =
+        std::env::var("BOOT_ROM_LOCATION").expect("BOOT_ROM_LOCATION needs to be set");
+    match boot_rom_location.as_str() {
+        "SDCARD" => {
+            let boot_rom_path =
+                std::env::var("BOOT_ROM_PATH").expect("BOOT_ROM_PATH needs to be set");
+            println!("cargo:rustc-env=BOOT_ROM_PATH={}", boot_rom_path);
+
+            println!("cargo:rustc-cfg=feature=\"boot_sdcard_rom\"");
+        }
+        "FLASH" => {
+            let boot_rom_path =
+                std::env::var("BOOT_ROM_PATH").expect("BOOT_ROM_PATH needs to be set");
+            println!("cargo:rustc-env=BOOT_ROM_PATH={}", boot_rom_path);
+
+            println!("cargo:rustc-cfg=feature=\"boot_flash_rom\"");
+        }
+        "NONE" => {
+            println!("cargo:rustc-cfg=feature=\"boot_none_rom\"");
+        }
+        _ => {
+            panic!("Wrong value for ROM_LOCATION: {}", rom_location);
+        }
+    }
+
+    println!("cargo:rerun-if-changed=.env");
 }

@@ -14,6 +14,8 @@ use alloc::boxed::Box;
 use cortex_m::asm;
 use embedded_hal::digital::OutputPin;
 use embedded_sdmmc::sdcard::AcquireOpts;
+use gb_core::hardware::boot_rom::{Bootrom, BootromData};
+use gb_core::hardware::cartridge::Cartridge;
 use mipidsi::options::{Orientation, Rotation};
 use panic_probe as _;
 extern crate alloc;
@@ -26,6 +28,7 @@ use hal::fugit::RateExtU32;
 
 use hardware::display::ScreenScaler;
 
+use rp235x_hal::timer::TimerDevice;
 use rp235x_hal::uart::{DataBits, StopBits, UartConfig};
 use rp235x_hal::{spi, Clock};
 use rp_hal::hal::dma::DMAExt;
@@ -180,34 +183,9 @@ fn main() -> ! {
         },
     );
     let mut volume_mgr = VolumeManager::new(sdcard, hardware::sdcard::DummyTimesource::default());
-    let mut volume0 = volume_mgr
-        .open_volume(embedded_sdmmc::VolumeIdx(0))
-        .unwrap();
 
-    let mut root_dir = volume0.open_root_dir().unwrap();
-
-    //Read boot rom
-    let mut boot_rom_file = root_dir
-        .open_file_in_dir("dmg_boot.bin", embedded_sdmmc::Mode::ReadOnly)
-        .unwrap();
-    let mut boot_rom_data = Box::new([0u8; 0x100]);
-    boot_rom_file.read(&mut *boot_rom_data).unwrap();
-    boot_rom_file.close().unwrap();
-    root_dir.close().unwrap();
-    volume0.close().unwrap();
-
-    let game_rom = include_bytes!("C:\\roms\\pkred.gb");
-    let rom_manager = gameboy::static_rom::StaticRomManager::new(game_rom, volume_mgr, timer);
-    //let rom_manager = gameboy::rom::SdRomManager::new("pkred.gb", volume_mgr, timer);
-
-    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
-
-    //writeln!(uart0, "Loading game: {}", &gb_rom.title).unwrap();
-    let cartridge = gb_rom.into_cartridge();
-    let boot_rom = gb_core::hardware::boot_rom::Bootrom::new(Some(
-        gb_core::hardware::boot_rom::BootromData::from_bytes(&*boot_rom_data),
-    ));
-    core::mem::drop(boot_rom_data);
+    let boot_rom = load_boot_rom(&mut volume_mgr);
+    let cartridge = load_rom(volume_mgr, timer);
 
     //////////////////////AUDIO SETUP
 
@@ -340,3 +318,119 @@ pub static PICOTOOL_ENTRIES: [hal::binary_info::EntryAddr; 5] = [
     hal::binary_info::rp_cargo_homepage_url!(),
     hal::binary_info::rp_program_build_attribute!(),
 ];
+
+#[cfg(feature = "sdcard_rom")]
+#[inline(always)]
+fn load_rom<
+    'a,
+    D: embedded_sdmmc::BlockDevice + 'a,
+    T: embedded_sdmmc::TimeSource + 'a,
+    DT: TimerDevice + 'a,
+    const MAX_DIRS: usize,
+    const MAX_FILES: usize,
+    const MAX_VOLUMES: usize,
+>(
+    volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+    timer: crate::hal::Timer<DT>,
+) -> Box<dyn Cartridge + 'a> {
+    #[const_env::from_env]
+    const ROM_CACHE_SIZE: usize = 10;
+    let rom_manager: gameboy::rom::SdRomManager<
+        D,
+        T,
+        DT,
+        ROM_CACHE_SIZE,
+        MAX_DIRS,
+        MAX_FILES,
+        MAX_VOLUMES,
+    > = gameboy::rom::SdRomManager::new(env!("ROM_PATH"), volume_manager, timer);
+    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
+    gb_rom.into_cartridge()
+}
+
+#[cfg(feature = "flash_rom")]
+#[inline(always)]
+fn load_rom<
+    'a,
+    D: embedded_sdmmc::BlockDevice + 'a,
+    T: embedded_sdmmc::TimeSource + 'a,
+    DT: TimerDevice + 'a,
+    const MAX_DIRS: usize,
+    const MAX_FILES: usize,
+    const MAX_VOLUMES: usize,
+>(
+    volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+    timer: crate::hal::Timer<DT>,
+) -> Box<dyn Cartridge + 'a> {
+    let game_rom = include_bytes!(env!("ROM_PATH"));
+    let rom_manager = gameboy::static_rom::StaticRomManager::new(game_rom, volume_manager, timer);
+    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
+    gb_rom.into_cartridge()
+}
+
+#[cfg(feature = "boot_sdcard_rom")]
+#[inline(always)]
+fn load_boot_rom<
+    'a,
+    'b,
+    D: embedded_sdmmc::BlockDevice,
+    T: embedded_sdmmc::TimeSource,
+    const MAX_DIRS: usize,
+    const MAX_FILES: usize,
+    const MAX_VOLUMES: usize,
+>(
+    volume_manager: &'a mut embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+) -> Bootrom {
+    let mut volume0 = volume_manager
+        .open_volume(embedded_sdmmc::VolumeIdx(0))
+        .unwrap();
+    let mut root_dir = volume0.open_root_dir().unwrap();
+
+    let dmg_boot_bin: &'static mut [u8] = cortex_m::singleton!(: [u8; 0x100]  = [0u8; 0x100 ])
+        .unwrap()
+        .as_mut_slice();
+    let mut boot_rom_file = root_dir
+        .open_file_in_dir(env!("BOOT_ROM_PATH"), embedded_sdmmc::Mode::ReadOnly)
+        .unwrap();
+
+    boot_rom_file.read(&mut *dmg_boot_bin).unwrap();
+    Bootrom::new(Some(BootromData::from_bytes(dmg_boot_bin)))
+}
+
+#[cfg(feature = "boot_flash_rom")]
+#[inline(always)]
+fn load_boot_rom<
+    'a,
+    'b,
+    D: embedded_sdmmc::BlockDevice,
+    T: embedded_sdmmc::TimeSource,
+    const MAX_DIRS: usize,
+    const MAX_FILES: usize,
+    const MAX_VOLUMES: usize,
+>(
+    _volume_manager: &'a mut embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+) -> Bootrom {
+    let game_rom = include_bytes!(env!("BOOT_ROM_PATH"));
+
+    let dmg_boot_bin: &'static mut [u8] = cortex_m::singleton!(: [u8; 0x100]  = [0u8; 0x100 ])
+        .unwrap()
+        .as_mut_slice();
+    dmg_boot_bin.copy_from_slice(game_rom);
+    Bootrom::new(Some(BootromData::from_bytes(dmg_boot_bin)))
+}
+
+#[cfg(feature = "boot_none_rom")]
+#[inline(always)]
+fn load_boot_rom<
+    'a,
+    'b,
+    D: embedded_sdmmc::BlockDevice,
+    T: embedded_sdmmc::TimeSource,
+    const MAX_DIRS: usize,
+    const MAX_FILES: usize,
+    const MAX_VOLUMES: usize,
+>(
+    _volume_manager: &'a mut embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+) -> Bootrom {
+    Bootrom::new(None)
+}
