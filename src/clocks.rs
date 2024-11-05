@@ -8,6 +8,7 @@ use hal::{clocks::ClocksManager, pac, Watchdog};
 
 pub const XOSC_CRYSTAL_FREQ: u32 = 12_000_000;
 
+#[inline(always)]
 pub fn configure_normal(
     xosc_crystal_freq: u32,
     xosc_dev: pac::XOSC,
@@ -78,8 +79,8 @@ pub const PLL_SYS_380MHZ: hal::pll::PLLConfig = hal::pll::PLLConfig {
     post_div1: 3,
     post_div2: 1,
 };
+#[inline(always)]
 pub fn configure_overclock(
-    // timer: pac::TIMER0,
     xosc_crystal_freq: u32,
     xosc_dev: pac::XOSC,
     clocks_dev: pac::CLOCKS,
@@ -93,8 +94,6 @@ pub fn configure_overclock(
     watchdog.enable_tick_generation((xosc_crystal_freq / 1_000_000) as u16);
 
     let mut clocks = ClocksManager::new(clocks_dev);
-    // let mut timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0> =
-    //     hal::Timer::new_timer0(timer, resets, &clocks);
 
     let pll_sys = hal::pll::setup_pll_blocking(
         pll_sys_dev,

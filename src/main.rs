@@ -372,7 +372,6 @@ fn load_rom<
 #[inline(always)]
 fn load_boot_rom<
     'a,
-    'b,
     D: embedded_sdmmc::BlockDevice,
     T: embedded_sdmmc::TimeSource,
     const MAX_DIRS: usize,
@@ -401,7 +400,6 @@ fn load_boot_rom<
 #[inline(always)]
 fn load_boot_rom<
     'a,
-    'b,
     D: embedded_sdmmc::BlockDevice,
     T: embedded_sdmmc::TimeSource,
     const MAX_DIRS: usize,
@@ -423,7 +421,6 @@ fn load_boot_rom<
 #[inline(always)]
 fn load_boot_rom<
     'a,
-    'b,
     D: embedded_sdmmc::BlockDevice,
     T: embedded_sdmmc::TimeSource,
     const MAX_DIRS: usize,
