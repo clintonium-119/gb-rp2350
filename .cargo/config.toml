@@ -33,6 +33,8 @@ rustflags = [
     "link-arg=-Tdefmt.x",
     "-C",
     "target-cpu=cortex-m33",
+    "-C",
+    "llvm-args=--inline-threshold=500",
 ]
 
 # Use picotool for loading.
@@ -54,6 +56,8 @@ rustflags = [
     "link-arg=-Tlink.x",
     "-C",
     "link-arg=-Tdefmt.x",
+    "-C",
+    "llvm-args=--inline-threshold=500",
 ]
 
 # Use picotool for loading.
@@ -83,6 +87,8 @@ rustflags = [
     "link-arg=-Trp235x_riscv.x",
     "-C",
     "link-arg=-Tdefmt.x",
+    "-C",
+    "llvm-args=--inline-threshold=500",
 ]
 
 # Use picotool for loading.
@@ -92,4 +98,4 @@ runner = "picotool load -u -v -x -t elf"
 
 
 [env]
-DEFMT_LOG = "debug"
+DEFMT_LOG = "info"
