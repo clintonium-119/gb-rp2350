@@ -375,6 +375,7 @@ fn load_boot_rom<
 >(
     volume_manager: &'a mut embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
 ) -> Bootrom {
+    use gb_core::hardware::boot_rom::BootromData;
     let mut volume0 = volume_manager
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
@@ -403,6 +404,7 @@ fn load_boot_rom<
 >(
     _volume_manager: &'a mut embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
 ) -> Bootrom {
+    use gb_core::hardware::boot_rom::BootromData;
     let game_rom = include_bytes!(env!("BOOT_ROM_PATH"));
 
     let dmg_boot_bin: &'static mut [u8] = cortex_m::singleton!(: [u8; 0x100]  = [0u8; 0x100 ])
