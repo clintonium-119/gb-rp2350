@@ -66,5 +66,21 @@ fn main() {
         }
     }
 
+    println!(
+        "cargo:rustc-env=DISPLAY_WIDTH={}",
+        std::env::var("DISPLAY_WIDTH").expect("DISPLAY_WIDTH needs to be set")
+    );
+    println!(
+        "cargo:rustc-env=DISPLAY_HEIGHT={}",
+        std::env::var("DISPLAY_HEIGHT").expect("DISPLAY_HEIGHT needs to be set")
+    );
+    println!(
+        "cargo:rustc-env=GAMEBOY_RENDER_WIDTH={}",
+        std::env::var("GAMEBOY_RENDER_WIDTH").expect("GAMEBOY_RENDER_WIDTH needs to be set")
+    );
+    println!(
+        "cargo:rustc-env=GAMEBOY_RENDER_HEIGHT={}",
+        std::env::var("GAMEBOY_RENDER_HEIGHT").expect("GAMEBOY_RENDER_HEIGHT needs to be set")
+    );
     println!("cargo:rerun-if-changed=.env");
 }

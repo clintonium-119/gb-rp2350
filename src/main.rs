@@ -35,7 +35,6 @@ use rp_hal::hal::dma::DMAExt;
 use rp_hal::hal::pio::PIOExt;
 
 // Alias for our HAL crate
-
 use rp_hal::hal;
 // Some things we need
 use embedded_alloc::Heap;
@@ -70,6 +69,15 @@ static SERIAL: static_cell::StaticCell<
         ),
     >,
 > = static_cell::StaticCell::new();
+
+#[const_env::from_env]
+const DISPLAY_WIDTH: u16 = 240;
+#[const_env::from_env]
+const DISPLAY_HEIGHT: u16 = 320;
+#[const_env::from_env]
+const GAMEBOY_RENDER_WIDTH: u16 = 240;
+#[const_env::from_env]
+const GAMEBOY_RENDER_HEIGHT: u16 = 320;
 
 #[hal::entry]
 fn main() -> ! {
@@ -145,11 +153,6 @@ fn main() -> ! {
     let (mut pio_1, sm_1_0, _, _, _) = pac.PIO1.split(&mut pac.RESETS);
     let dma = pac.DMA.split(&mut pac.RESETS);
 
-    const SCREEN_WIDTH: u16 = 240 as u16;
-    const SCREEN_HEIGHT: u16 = 320 as u16;
-    const GB_RENDER_WIDTH: usize = (SCREEN_WIDTH as f32 / 1.0f32) as usize;
-    const GB_RENDER_HEIGHT: usize = (SCREEN_HEIGHT as f32 / 1.0f32) as usize;
-
     ///////////////////////////////SD CARD
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
         pins.gpio14.into_function::<hal::gpio::FunctionSpi>();
@@ -221,7 +224,7 @@ fn main() -> ! {
         pins.gpio5.into_function::<hal::gpio::FunctionPio0>();
 
     let display_buffer: &'static mut [u16] =
-        cortex_m::singleton!(: [u16;(GB_RENDER_WIDTH) * 3]  = [0u16; (GB_RENDER_WIDTH ) * 3 ])
+        cortex_m::singleton!(: [u16;(GAMEBOY_RENDER_WIDTH as usize) * 3]  = [0u16; (GAMEBOY_RENDER_WIDTH as usize ) * 3 ])
             .unwrap()
             .as_mut_slice();
 
@@ -242,7 +245,7 @@ fn main() -> ! {
 
     let mut display = mipidsi::Builder::new(mipidsi::models::ILI9341Rgb565, display_interface)
         .reset_pin(display_reset)
-        .display_size(SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16)
+        .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
         .orientation(Orientation {
             rotation: Rotation::Deg90,
             mirrored: true,
@@ -250,8 +253,12 @@ fn main() -> ! {
         .init(&mut timer)
         .unwrap();
 
-    let scaler: ScreenScaler<144, 160, { GB_RENDER_WIDTH }, { GB_RENDER_HEIGHT }> =
-        ScreenScaler::new();
+    let scaler: ScreenScaler<
+        144,
+        160,
+        { GAMEBOY_RENDER_WIDTH as usize },
+        { GAMEBOY_RENDER_HEIGHT as usize },
+    > = ScreenScaler::new();
 
     ////////////////////// JOYPAD
     let mut b_button = pins.gpio16.into_pull_up_input().into_dyn_pin();
@@ -285,8 +292,8 @@ fn main() -> ! {
             .set_pixels(
                 0,
                 0,
-                (GB_RENDER_HEIGHT - 1) as u16,
-                (GB_RENDER_WIDTH - 1) as u16,
+                (GAMEBOY_RENDER_HEIGHT - 1) as u16,
+                (GAMEBOY_RENDER_WIDTH - 1) as u16,
                 scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();

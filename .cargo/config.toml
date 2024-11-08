@@ -34,7 +34,10 @@ rustflags = [
     "-C",
     "target-cpu=cortex-m33",
     "-C",
-    "llvm-args=--inline-threshold=500",
+    "llvm-args=-pass-remarks=inline",
+    "-C",
+    #"llvm-args=--inline-threshold=466",
+    "llvm-args=--inline-threshold=600",
 ]
 
 # Use picotool for loading.
