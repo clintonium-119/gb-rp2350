@@ -38,7 +38,7 @@ use rp_hal::hal::pio::PIOExt;
 // Alias for our HAL crate
 use rp_hal::hal;
 // Some things we need
-use embedded_alloc::Heap;
+use embedded_alloc::TlsfHeap as Heap;
 
 /// Tell the Boot ROM about our application
 #[link_section = ".start_block"]
@@ -300,8 +300,8 @@ fn main() -> ! {
     // let mut binding = alloc::vec![ Rgb565::default(); GAMEBOY_RENDER_HEIGHT as usize];
     // let mut line_buffer = binding.as_mut_slice();
     loop {
-        defmt::info!("Free Mem: {}", ALLOCATOR.free());
-        defmt::info!("Used Mem: {}", ALLOCATOR.used());
+        // defmt::info!("Free Mem: {}", ALLOCATOR.free());
+        // defmt::info!("Used Mem: {}", ALLOCATOR.used());
 
         let start_time = timer.get_counter();
 
