@@ -285,36 +285,22 @@ fn main() -> ! {
     led_pin.set_high().unwrap();
 
     let mut loop_counter: usize = 0;
-    use embedded_graphics::pixelcolor::Rgb565;
-    // let mut line_buffer: &'static mut [embedded_graphics::pixelcolor::Rgb565] =
-    // cortex_m::singleton!(: [embedded_graphics::pixelcolor::Rgb565; GAMEBOY_RENDER_HEIGHT as usize]  = [embedded_graphics::pixelcolor::Rgb565::default(); GAMEBOY_RENDER_HEIGHT as usize])
-    //     .unwrap();
 
-    // // let mut line_buffer: &'static mut Vec<embedded_graphics::pixelcolor::Rgb565> =
-    // //     cortex_m::singleton!(: Vec<embedded_graphics::pixelcolor::Rgb565> = alloc::vec![ embedded_graphics::pixelcolor::Rgb565::default(); GAMEBOY_RENDER_HEIGHT as usize])
-    // //     .unwrap();
-    // // let mut line_buffer: &'static mut [Rgb565] =
-    // // cortex_m::singleton!(: Vec<embedded_graphics::pixelcolor::Rgb565> = alloc::vec![ embedded_graphics::pixelcolor::Rgb565::default(); GAMEBOY_RENDER_HEIGHT as usize])
-    // // .unwrap();
-
-    // let mut binding = alloc::vec![ Rgb565::default(); GAMEBOY_RENDER_HEIGHT as usize];
-    // let mut line_buffer = binding.as_mut_slice();
+    const MIDDLE_HEIGHT: u16 = (DISPLAY_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
+    const MIDDLE_WIDTH: u16 = (DISPLAY_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
     loop {
-        // defmt::info!("Free Mem: {}", ALLOCATOR.free());
-        // defmt::info!("Used Mem: {}", ALLOCATOR.used());
+        defmt::info!("Free Mem: {}", ALLOCATOR.free());
+        defmt::info!("Used Mem: {}", ALLOCATOR.used());
 
         let start_time = timer.get_counter();
 
         display
             .set_pixels(
-                0,
-                0,
-                (GAMEBOY_RENDER_HEIGHT - 1) as u16,
-                (GAMEBOY_RENDER_WIDTH - 1) as u16,
-                scaler.scale_iterator(
-                    GameEmulationHandler::new(&mut gameboy, &mut button_handler),
-                    //   &mut line_buffer,
-                ),
+                MIDDLE_HEIGHT,
+                MIDDLE_WIDTH,
+                (GAMEBOY_RENDER_HEIGHT - 1) as u16 + MIDDLE_HEIGHT,
+                (GAMEBOY_RENDER_WIDTH - 1) as u16 + MIDDLE_WIDTH,
+                scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
         let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
