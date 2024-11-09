@@ -196,9 +196,9 @@ fn main() -> ! {
     let int_divider = (clock_divider >> 8) as u16;
     let frak_divider = (clock_divider & 0xFF) as u8;
 
-    let _i2s_din = pins.gpio9.into_function::<hal::gpio::FunctionPio1>();
-    let _i2s_bclk = pins.gpio10.into_function::<hal::gpio::FunctionPio1>();
-    let _i2s_lrc = pins.gpio11.into_function::<hal::gpio::FunctionPio1>();
+    let i2s_din = pins.gpio9.into_function::<hal::gpio::FunctionPio1>();
+    let i2s_bclk = pins.gpio10.into_function::<hal::gpio::FunctionPio1>();
+    let i2s_lrc = pins.gpio11.into_function::<hal::gpio::FunctionPio1>();
     let audio_buffer: &'static mut [u16] =
         cortex_m::singleton!(: [u16; (2000 * 3) * 3]  = [0u16;  (2000 * 3) * 3 ])
             .unwrap()
@@ -210,8 +210,8 @@ fn main() -> ! {
         (int_divider as u16, frak_divider as u8),
         &mut pio_1,
         sm_1_0,
-        (10, 11),
-        9,
+        (i2s_bclk.id().num, i2s_lrc.id().num),
+        i2s_din.id().num,
         audio_buffer,
     );
 
