@@ -38,7 +38,7 @@ use rp_hal::hal::pio::PIOExt;
 // Alias for our HAL crate
 use rp_hal::hal;
 // Some things we need
-use embedded_alloc::TlsfHeap as Heap;
+use embedded_alloc::LlffHeap as Heap;
 
 /// Tell the Boot ROM about our application
 #[link_section = ".start_block"]
@@ -182,7 +182,7 @@ fn main() -> ! {
         },
     );
     // let mut volume_mgr = VolumeManager::new(sdcard, hardware::sdcard::DummyTimesource::default());
-    let mut volume_mgr: VolumeManager<_, _, 3, 1, 1> =
+    let mut volume_mgr: VolumeManager<_, _, 3, 2, 1> =
         VolumeManager::new_with_limits(sdcard, hardware::sdcard::DummyTimesource::default(), 5000);
 
     let boot_rom = load_boot_rom(&mut volume_mgr);

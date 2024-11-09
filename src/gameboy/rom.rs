@@ -7,7 +7,7 @@ use alloc::{
     string::{String, ToString},
 };
 use const_lru::ConstLru;
-use defmt::{info, warn};
+use defmt::{debug, info, warn};
 use embedded_hal::delay::DelayNs;
 use embedded_sdmmc::{RawFile, RawVolume};
 
@@ -75,27 +75,9 @@ impl<
 
         result
     }
-    //   #[inline(always)]
-    fn read_bank(&self, bank_offset: usize) -> Box<[u8; 0x4000]> {
-        let mut result = None;
-        for _i in 0..4 {
-            let inner_result = self.internal_read_bank(bank_offset);
-            if inner_result.is_ok() {
-                result = Some(inner_result.unwrap());
-                break;
-            }
-            let error = inner_result.err().take().unwrap();
-            warn!(
-                "Failed to read rom, retrying, {}",
-                defmt::Debug2Format(&error)
-            );
-            self.timer.borrow_mut().delay_ms(200);
-        }
-        result.unwrap()
-    }
 
     #[inline(always)]
-    fn internal_read_bank(
+    fn read_bank(
         &self,
         bank_offset: usize,
     ) -> Result<Box<[u8; 0x4000]>, embedded_sdmmc::Error<D::Error>> {
@@ -135,17 +117,18 @@ impl<
         let value = match bank {
             Some(buffer) => buffer[index],
             None => {
-                info!("LOADING BANK: {}", bank_number);
-                let buffer: Box<[u8; 0x4000]> = self.read_bank(seek_offset);
+                info!("Loading Rom Bank: {}", bank_number);
+                let buffer: Box<[u8; 0x4000]> = self.read_bank(seek_offset).unwrap();
                 let result = buffer[index];
+
                 let unloaded_bank = bank_lru.insert(bank_number, buffer);
                 if unloaded_bank.is_some() {
                     match unloaded_bank.unwrap() {
                         const_lru::InsertReplaced::LruEvicted(index, _) => {
-                            info!("Unloaded bank: {}", index);
+                            debug!("Unloaded bank: {}", index);
                         }
                         const_lru::InsertReplaced::OldValue(_) => {
-                            info!("Unloaded bank: unknown");
+                            debug!("Unloaded bank: unknown");
                         }
                     }
                 }
@@ -204,6 +187,7 @@ impl<
     }
 
     fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
+        info!("Loading ram bank: {}", bank_index);
         let mut volume_manager = self.volume_manager.borrow_mut();
         let mut volume = self
             .raw_volume
