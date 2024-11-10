@@ -124,16 +124,17 @@ where
             //Collect all pixes from a scan line
             let mut next_x_position = 0;
             for count in 0..IN_WIDTH {
-                let pixel = self.iterator.next();
-                if pixel.is_none() {
-                    return None;
-                }
+                match self.iterator.next() {
+                    Some(pixel) => {
+                        let last_pixel = self.width_ceil_calcs[count] as u16;
+                        self.scaled_scan_line_buffer
+                            [(next_x_position as usize)..last_pixel as usize]
+                            .fill(pixel);
 
-                let last_pixel = self.width_ceil_calcs[count] as u16;
-                self.scaled_scan_line_buffer[(next_x_position as usize)..last_pixel as usize]
-                    .fill(pixel.unwrap());
-
-                next_x_position = last_pixel;
+                        next_x_position = last_pixel;
+                    }
+                    None => return None,
+                };
             }
             //Calculate y position of the next scan line
             let next_scan_line_start =

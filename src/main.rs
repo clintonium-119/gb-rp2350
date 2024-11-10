@@ -90,6 +90,7 @@ fn main() -> ! {
 
     // Grab our singleton objects
     let mut pac = hal::pac::Peripherals::take().unwrap();
+
     let sio = hal::Sio::new(pac.SIO);
 
     let pins = hal::gpio::Pins::new(
