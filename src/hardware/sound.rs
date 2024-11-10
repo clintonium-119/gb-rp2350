@@ -137,13 +137,13 @@ where
     }
 
     fn underflowed(&self) -> bool {
-        let underflowed = match &self.dma_state {
-            Some(dma_state) => match dma_state {
-                DmaState::IDLE(..) => true,
-                DmaState::RUNNING(transfer) => transfer.is_done(),
-            },
-            None => false,
-        };
+        // let underflowed = match &self.dma_state {
+        //     Some(dma_state) => match dma_state {
+        //         DmaState::IDLE(..) => true,
+        //         DmaState::RUNNING(transfer) => transfer.is_done(),
+        //     },
+        //     None => false,
+        // };
 
         true
     }

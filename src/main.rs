@@ -11,7 +11,6 @@ mod rp_hal;
 mod util;
 
 use alloc::boxed::Box;
-use alloc::vec::{self, Vec};
 use cortex_m::asm;
 use embedded_hal::digital::OutputPin;
 use embedded_sdmmc::sdcard::AcquireOpts;
@@ -181,7 +180,6 @@ fn main() -> ! {
             use_crc: true,
         },
     );
-    // let mut volume_mgr = VolumeManager::new(sdcard, hardware::sdcard::DummyTimesource::default());
     let mut volume_mgr: VolumeManager<_, _, 3, 2, 1> =
         VolumeManager::new_with_limits(sdcard, hardware::sdcard::DummyTimesource::default(), 5000);
 
