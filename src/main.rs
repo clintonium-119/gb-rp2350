@@ -81,18 +81,10 @@ const GAMEBOY_RENDER_HEIGHT: u16 = 320;
 
 #[hal::entry]
 fn main() -> ! {
-    {
-        use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 300_000 + (0x4000 * 6);
-        static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-        unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
-    }
-
-    // Grab our singleton objects
     let mut pac = hal::pac::Peripherals::take().unwrap();
 
+    // Grab our singleton objects
     let sio = hal::Sio::new(pac.SIO);
-
     let pins = hal::gpio::Pins::new(
         pac.IO_BANK0,
         pac.PADS_BANK0,
@@ -132,6 +124,15 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
+
+    let _ = pins.gpio47.into_function::<hal::gpio::FunctionXipCs1>();
+
+    let _psram_size = hardware::psram::psram_init(
+        clocks.peripheral_clock.freq().to_Hz(),
+        &pac.QMI,
+        &pac.XIP_CTRL,
+    );
+
     let mut timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0> =
         hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
 
@@ -146,6 +147,15 @@ fn main() -> ! {
     defmt_serial::defmt_serial(SERIAL.init(uart0));
 
     defmt::info!("Console Start");
+
+    {
+        use core::mem::MaybeUninit;
+        const HEAP_SIZE: usize = 300_000 + (0x4000 * 6);
+        static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
+
+        //  unsafe { ALLOCATOR.init(0x11000000 as usize, HEAP_SIZE) }
+    }
 
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
@@ -171,6 +181,8 @@ fn main() -> ! {
         400.kHz(),
         embedded_hal::spi::MODE_0,
     );
+
+    defmt::info!("PSRAM initialized");
 
     let exclusive_spi = embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(spi, spi_cs).unwrap();
     let sdcard = SdCard::new_with_options(
@@ -340,6 +352,7 @@ fn load_rom<
     volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     timer: crate::hal::Timer<DT>,
 ) -> Box<dyn Cartridge + 'a> {
+    defmt::info!("Loading from SDCARD");
     #[const_env::from_env]
     const ROM_CACHE_SIZE: usize = 10;
     let rom_manager: gameboy::rom::SdRomManager<
@@ -402,6 +415,40 @@ fn load_boot_rom<
 
     boot_rom_file.read(&mut *dmg_boot_bin).unwrap();
     Bootrom::new(Some(BootromData::from_bytes(dmg_boot_bin)))
+}
+
+#[inline(always)]
+fn load_rom2<
+    'a,
+    D: embedded_sdmmc::BlockDevice + 'a,
+    T: embedded_sdmmc::TimeSource + 'a,
+    DT: TimerDevice + 'a,
+    const MAX_DIRS: usize,
+    const MAX_FILES: usize,
+    const MAX_VOLUMES: usize,
+>(
+    mut volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+    timer: crate::hal::Timer<DT>,
+    ram: &'static mut [u8],
+) -> Box<dyn Cartridge + 'a> {
+    let rom_name = env!("ROM_PATH");
+    let mut volume = volume_manager
+        .open_volume(embedded_sdmmc::VolumeIdx(0))
+        .unwrap();
+    let mut root_dir = volume.open_root_dir().unwrap();
+    let mut rom_file = root_dir
+        .open_file_in_dir(rom_name, embedded_sdmmc::Mode::ReadOnly)
+        .unwrap();
+
+    rom_file.seek_from_start(0u32).unwrap();
+    rom_file.read(ram).unwrap();
+    rom_file.close().unwrap();
+    root_dir.close().unwrap();
+    volume.close().unwrap();
+
+    let rom_manager = gameboy::static_rom::StaticRomManager::new(ram, volume_manager, timer);
+    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
+    gb_rom.into_cartridge()
 }
 
 #[cfg(feature = "boot_flash_rom")]
