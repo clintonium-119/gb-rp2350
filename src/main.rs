@@ -127,7 +127,7 @@ fn main() -> ! {
 
     let _ = pins.gpio47.into_function::<hal::gpio::FunctionXipCs1>();
 
-    let _psram_size = hardware::psram::psram_init(
+    let psram_size = hardware::psram::psram_init(
         clocks.peripheral_clock.freq().to_Hz(),
         &pac.QMI,
         &pac.XIP_CTRL,
@@ -197,7 +197,24 @@ fn main() -> ! {
         VolumeManager::new_with_limits(sdcard, hardware::sdcard::DummyTimesource::default(), 5000);
 
     let boot_rom = load_boot_rom(&mut volume_mgr);
-    let cartridge = load_rom(volume_mgr, timer);
+    let cartridge = if cfg!(feature = "sdcard_rom") && psram_size > 0 {
+        defmt::info!("Using PRSAM");
+
+        let psram = unsafe {
+            const PSRAM_ADDRESS: usize = 0x11000000;
+
+            let ptr = PSRAM_ADDRESS as *mut u8; // Using u8 for byte array
+            let slice: &'static mut [u8] =
+                alloc::slice::from_raw_parts_mut(ptr, psram_size as usize);
+            slice
+        };
+        defmt::info!("SLICE  initialized");
+        let cartridge = load_rom2(volume_mgr, timer, psram);
+        cartridge
+    } else {
+        let cartridge = load_rom(volume_mgr, timer);
+        cartridge
+    };
 
     //////////////////////AUDIO SETUP
 
