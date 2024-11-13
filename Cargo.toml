@@ -53,7 +53,13 @@ fugit = "0.3.6"
 
 pio = "0.2.0"
 pio-proc = "0.2.0"
-rp235x-hal = { git = "https://github.com/rp-rs/rp-hal.git", rev = "63af8640a666ad329a0ddb1b8501a75d2ff61e3b", features = [
+# rp235x-hal = { git = "https://github.com/rp-rs/rp-hal.git", rev = "63af8640a666ad329a0ddb1b8501a75d2ff61e3b", features = [
+#     "binary-info",
+#     "critical-section-impl",
+#     "rt",
+#     "defmt",
+# ] }
+rp235x-hal = { path = "C:\\Users\\pablo\\projects\\rp-hal\\rp235x-hal", features = [
     "binary-info",
     "critical-section-impl",
     "rt",
