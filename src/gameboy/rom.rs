@@ -7,8 +7,7 @@ use alloc::{
     string::{String, ToString},
 };
 use const_lru::ConstLru;
-use defmt::{debug, info, warn};
-use embedded_hal::delay::DelayNs;
+use defmt::{debug, info};
 use embedded_sdmmc::{RawFile, RawVolume};
 
 pub struct SdRomManager<

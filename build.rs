@@ -82,5 +82,18 @@ fn main() {
         "cargo:rustc-env=GAMEBOY_RENDER_HEIGHT={}",
         std::env::var("GAMEBOY_RENDER_HEIGHT").expect("GAMEBOY_RENDER_HEIGHT needs to be set")
     );
+
+    //PSRAM
+    let psram: bool = std::env::var("ENABLE_PSRAM")
+        .unwrap_or(String::from("true"))
+        .to_lowercase()
+        .parse()
+        .unwrap_or(false);
+    if psram {
+        println!("cargo:rustc-env=ENABLE_PSRAM={}", true);
+    } else {
+        println!("cargo:rustc-env=ENABLE_PSRAM={}", false);
+    }
+
     println!("cargo:rerun-if-changed=.env");
 }

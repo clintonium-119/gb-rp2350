@@ -79,6 +79,9 @@ const GAMEBOY_RENDER_WIDTH: u16 = 240;
 #[const_env::from_env]
 const GAMEBOY_RENDER_HEIGHT: u16 = 320;
 
+#[const_env::from_env]
+const ENABLE_PSRAM: bool = true;
+
 #[hal::entry]
 fn main() -> ! {
     let mut pac = hal::pac::Peripherals::take().unwrap();
@@ -125,13 +128,16 @@ fn main() -> ! {
     .ok()
     .unwrap();
 
-    let _ = pins.gpio47.into_function::<hal::gpio::FunctionXipCs1>();
-
-    let psram_size = hardware::psram::psram_init(
-        clocks.peripheral_clock.freq().to_Hz(),
-        &pac.QMI,
-        &pac.XIP_CTRL,
-    );
+    let psram_size = if ENABLE_PSRAM {
+        let _ = pins.gpio47.into_function::<hal::gpio::FunctionXipCs1>();
+        hardware::psram::psram_init(
+            clocks.peripheral_clock.freq().to_Hz(),
+            &pac.QMI,
+            &pac.XIP_CTRL,
+        )
+    } else {
+        0
+    };
 
     let mut timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0> =
         hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
@@ -208,8 +214,7 @@ fn main() -> ! {
                 alloc::slice::from_raw_parts_mut(ptr, psram_size as usize);
             slice
         };
-        defmt::info!("SLICE  initialized");
-        let cartridge = load_rom2(volume_mgr, timer, psram);
+        let cartridge = load_rom_to_psram(volume_mgr, timer, psram);
         cartridge
     } else {
         let cartridge = load_rom(volume_mgr, timer);
@@ -435,7 +440,7 @@ fn load_boot_rom<
 }
 
 #[inline(always)]
-fn load_rom2<
+fn load_rom_to_psram<
     'a,
     D: embedded_sdmmc::BlockDevice + 'a,
     T: embedded_sdmmc::TimeSource + 'a,
@@ -457,11 +462,19 @@ fn load_rom2<
         .open_file_in_dir(rom_name, embedded_sdmmc::Mode::ReadOnly)
         .unwrap();
 
+    if ram.len() < rom_file.length() as usize {
+        panic!(
+            "Ram size not bigh enough for Rom of size: {}",
+            rom_file.length()
+        )
+    }
+    defmt::info!("Loading rom into psram");
     rom_file.seek_from_start(0u32).unwrap();
     rom_file.read(ram).unwrap();
     rom_file.close().unwrap();
     root_dir.close().unwrap();
     volume.close().unwrap();
+    defmt::info!("Loading complete");
 
     let rom_manager = gameboy::static_rom::StaticRomManager::new(ram, volume_manager, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
