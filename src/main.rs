@@ -126,19 +126,6 @@ fn main() -> ! {
     .ok()
     .unwrap();
 
-    #[cfg(feature = "psram")]
-    let psram_size = {
-        let _ =
-            pin_select!(pins, env!("PIN_PSRAM_CS")).into_function::<hal::gpio::FunctionXipCs1>();
-        hardware::psram::psram_init(
-            clocks.peripheral_clock.freq().to_Hz(),
-            &pac.QMI,
-            &pac.XIP_CTRL,
-        )
-    };
-    #[cfg(not(feature = "psram"))]
-    let psram_size = 0;
-
     let mut timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0> =
         hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
 
@@ -209,6 +196,14 @@ fn main() -> ! {
     #[cfg(feature = "psram")]
     let cartridge = {
         defmt::info!("Using PRSAM");
+
+        let _ =
+            pin_select!(pins, env!("PIN_PSRAM_CS")).into_function::<hal::gpio::FunctionXipCs1>();
+        let psram_size = hardware::psram::psram_init(
+            clocks.peripheral_clock.freq().to_Hz(),
+            &pac.QMI,
+            &pac.XIP_CTRL,
+        );
 
         let psram = unsafe {
             const PSRAM_ADDRESS: usize = 0x11000000;

@@ -1,5 +1,5 @@
 [package]
-authors = ["The rp-rs Developers"]
+authors = ["Altaflux"]
 categories = ["embedded", "hardware-support", "no-std", "no-std::no-alloc"]
 description = "Gameboy emulator for the rp2350"
 edition = "2021"
@@ -26,7 +26,6 @@ embedded-graphics = "0.8.1"
 display-interface-spi = "0.5.0"
 mipidsi = "0.8.0"
 gb-core = { git = "https://github.com/Altaflux/rust-gb.git", rev = "282ea98bde0d0876987511ab52da8bbeb5f8cc67", default-features = false }
-#gb-core = { path = "C:\\Users\\pablo\\projects\\rust-gb\\gb-core", default-features = false }
 embedded-hal-bus = { version = "0.2.0", features = ["defmt-03"] }
 embedded-io = "0.6.1"
 # We aren't using this, but embedded-hal-bus 0.2 unconditionally requires atomics.
@@ -53,18 +52,13 @@ fugit = "0.3.6"
 
 pio = "0.2.0"
 pio-proc = "0.2.0"
-# rp235x-hal = { git = "https://github.com/rp-rs/rp-hal.git", rev = "63af8640a666ad329a0ddb1b8501a75d2ff61e3b", features = [
-#     "binary-info",
-#     "critical-section-impl",
-#     "rt",
-#     "defmt",
-# ] }
-rp235x-hal = { path = "C:\\Users\\pablo\\projects\\rp-hal\\rp235x-hal", features = [
+rp235x-hal = { git = "https://github.com/Altaflux/rp-hal.git", branch = "xip_cs1", features = [
     "binary-info",
     "critical-section-impl",
     "rt",
     "defmt",
 ] }
+
 defmt-serial = "0.10.0"
 static_cell = "2.1.0"
 panic-probe = { version = "0.3.2", features = ["defmt", "print-defmt"] }
