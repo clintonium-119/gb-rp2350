@@ -8,6 +8,7 @@ Supported Features:
 * Running games bigger than the available memory of the Pi Pico.
 * Sound support.
 * Screen scaler, the image of the GB is scaled to different screens.
+* PSRAM support for Pimoroni Pico Plus 2.
 
 Pending Features:
 * Game selection menu.
@@ -50,6 +51,10 @@ Pending Features:
 * MAX98357A DIN = GP9
 * MAX98357A BCLK = GP10
 * MAX98357A LRC = GP11
+* PSRAM_CS = 47 //This only required if you are using a Pico with PSRAM such as the Pimoroni Pico Plus 2 and enable PSRAM mode.
+
+Notes: You can change the default mapping of the pins by setting `CUSTOM_PIN_MAP=my_custom_pin_map.env` setting.
+Take a look at the `pin_mapping.env` file for a reference of all pin names.
 
 # Installing the firmware
 1. Install the latest stable version of Rust.

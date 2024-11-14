@@ -36,6 +36,9 @@ fn main() {
         "FLASH" => {
             println!("cargo:rustc-cfg=feature=\"flash_rom\"");
         }
+        "PSRAM" => {
+            println!("cargo:rustc-cfg=feature=\"psram\"");
+        }
         _ => {
             panic!("Wrong value for ROM_LOCATION: {}", rom_location);
         }
@@ -82,15 +85,6 @@ fn main() {
         "cargo:rustc-env=GAMEBOY_RENDER_HEIGHT={}",
         std::env::var("GAMEBOY_RENDER_HEIGHT").expect("GAMEBOY_RENDER_HEIGHT needs to be set")
     );
-
-    let psram: bool = std::env::var("ENABLE_PSRAM")
-        .unwrap_or(String::from("true"))
-        .to_lowercase()
-        .parse()
-        .unwrap_or(false);
-    if psram {
-        println!("cargo:rustc-cfg=feature=\"psram\"");
-    }
 
     load_pin_mapping();
     println!("cargo:rerun-if-changed=pin_mapping.env");

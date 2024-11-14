@@ -193,8 +193,6 @@ fn main() -> ! {
         embedded_hal::spi::MODE_0,
     );
 
-    defmt::info!("PSRAM initialized");
-
     let exclusive_spi = embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(spi, spi_cs).unwrap();
     let sdcard = SdCard::new_with_options(
         exclusive_spi,
@@ -208,7 +206,8 @@ fn main() -> ! {
         VolumeManager::new_with_limits(sdcard, hardware::sdcard::DummyTimesource::default(), 5000);
 
     let boot_rom = load_boot_rom(&mut volume_mgr);
-    let cartridge = if psram_size > 0 {
+    #[cfg(feature = "psram")]
+    let cartridge = {
         defmt::info!("Using PRSAM");
 
         let psram = unsafe {
@@ -220,10 +219,9 @@ fn main() -> ! {
         };
         let cartridge = load_rom_to_psram(volume_mgr, timer, psram);
         cartridge
-    } else {
-        let cartridge = load_rom(volume_mgr, timer);
-        cartridge
     };
+    #[cfg(not(feature = "psram"))]
+    let cartridge = load_rom(volume_mgr, timer);
 
     //////////////////////AUDIO SETUP
 
