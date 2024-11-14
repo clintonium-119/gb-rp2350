@@ -28,7 +28,6 @@ use hal::fugit::RateExtU32;
 
 use hardware::display::ScreenScaler;
 
-use rp235x_hal::gpio::{FunctionSio, SioInput, SioOutput};
 use rp235x_hal::timer::TimerDevice;
 use rp235x_hal::uart::{DataBits, StopBits, UartConfig};
 use rp235x_hal::{spi, Clock};
@@ -39,6 +38,9 @@ use rp_hal::hal::pio::PIOExt;
 use rp_hal::hal;
 // Some things we need
 use embedded_alloc::LlffHeap as Heap;
+
+//Include selected display driver
+include!(concat!(env!("OUT_DIR"), "/generated_display_driver.rs"));
 
 /// Tell the Boot ROM about our application
 #[link_section = ".start_block"]
@@ -277,7 +279,7 @@ fn main() -> ! {
 
     let display_reset = pin_select!(pins, env!("PIN_SCREEN_RESET")).into_push_pull_output();
 
-    let mut display = mipidsi::Builder::new(mipidsi::models::ILI9341Rgb565, display_interface)
+    let mut display = mipidsi::Builder::new(DisplayDriver, display_interface)
         .reset_pin(display_reset)
         .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
         .orientation(Orientation {

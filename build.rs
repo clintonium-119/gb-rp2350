@@ -1,5 +1,6 @@
 //! Set up linker scripts for the rp235x-hal examples
 
+use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::path::{self, PathBuf};
@@ -87,6 +88,8 @@ fn main() {
     );
 
     load_pin_mapping();
+    load_display_driver();
+
     println!("cargo:rerun-if-changed=pin_mapping.env");
     println!("cargo:rerun-if-changed=.env");
 }
@@ -110,4 +113,21 @@ fn load_pin_mapping() {
     for (key, value) in env_map {
         println!("cargo:rustc-env=PIN_{}={}", key, value);
     }
+}
+
+fn load_display_driver() {
+    let display_driver = std::env::var("DISPLAY_DRIVER").expect("DISPLAY_DRIVER needs to be set");
+    let code = format!(
+        "
+        use {display_driver} as DisplayDriver;
+        ",
+        display_driver = display_driver
+    );
+
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let dest_path = PathBuf::from(out_dir).join("generated_display_driver.rs");
+
+    // Write the generated code to the file
+    let mut f = File::create(&dest_path).unwrap();
+    f.write_all(code.as_bytes()).unwrap();
 }
