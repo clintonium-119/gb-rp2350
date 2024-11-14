@@ -28,7 +28,7 @@ use hal::fugit::RateExtU32;
 
 use hardware::display::ScreenScaler;
 
-use rp235x_hal::gpio::{FunctionSio, SioOutput};
+use rp235x_hal::gpio::{FunctionSio, SioInput, SioOutput};
 use rp235x_hal::timer::TimerDevice;
 use rp235x_hal::uart::{DataBits, StopBits, UartConfig};
 use rp235x_hal::{spi, Clock};
@@ -80,9 +80,6 @@ const GAMEBOY_RENDER_WIDTH: u16 = 240;
 #[const_env::from_env]
 const GAMEBOY_RENDER_HEIGHT: u16 = 320;
 
-#[const_env::from_env]
-const ENABLE_PSRAM: bool = true;
-
 #[hal::entry]
 fn main() -> ! {
     let mut pac = hal::pac::Peripherals::take().unwrap();
@@ -131,7 +128,8 @@ fn main() -> ! {
 
     #[cfg(feature = "psram")]
     let psram_size = {
-        let _ = pin_into_function!(pins, env!("PIN_PSRAM_CS"), hal::gpio::FunctionXipCs1);
+        let _ =
+            pin_select!(pins, env!("PIN_PSRAM_CS")).into_function::<hal::gpio::FunctionXipCs1>();
         hardware::psram::psram_init(
             clocks.peripheral_clock.freq().to_Hz(),
             &pac.QMI,
@@ -146,8 +144,8 @@ fn main() -> ! {
 
     ///////////////////UART!
     let uart0_pins = (
-        pin_into_function!(pins, env!("PIN_UART_RX")),
-        pin_into_function!(pins, env!("PIN_UART_TX")),
+        pin_select!(pins, env!("PIN_UART_RX")).into_function(),
+        pin_select!(pins, env!("PIN_UART_TX")).into_function(),
     );
 
     let uart0 = hal::uart::UartPeripheral::new(pac.UART0, uart0_pins, &mut pac.RESETS)
@@ -178,13 +176,13 @@ fn main() -> ! {
 
     ///////////////////////////////SD CARD
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pin_into_function!(pins, env!("PIN_SD_CARD_SCLK"), hal::gpio::FunctionSpi);
+        pin_select!(pins, env!("PIN_SD_CARD_SCLK")).into_function::<hal::gpio::FunctionSpi>();
 
     let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pin_into_function!(pins, env!("PIN_SD_CARD_MOSI"), hal::gpio::FunctionSpi);
-    let spi_cs = pin_into_function!(pins, env!("PIN_SD_CARD_CS"), FunctionSio<SioOutput>);
+        pin_select!(pins, env!("PIN_SD_CARD_MOSI")).into_function::<hal::gpio::FunctionSpi>();
+    let spi_cs = pin_select!(pins, env!("PIN_SD_CARD_CS")).into_push_pull_output();
     let spi_miso: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pin_into_function!(pins, env!("PIN_SD_CARD_MISO"), hal::gpio::FunctionSpi);
+        pin_select!(pins, env!("PIN_SD_CARD_MISO")).into_function::<hal::gpio::FunctionSpi>();
 
     // Create the SPI driver instance for the SPI0 device
     let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk));
@@ -210,12 +208,11 @@ fn main() -> ! {
         VolumeManager::new_with_limits(sdcard, hardware::sdcard::DummyTimesource::default(), 5000);
 
     let boot_rom = load_boot_rom(&mut volume_mgr);
-    let cartridge = if cfg!(feature = "sdcard_rom") && psram_size > 0 {
+    let cartridge = if psram_size > 0 {
         defmt::info!("Using PRSAM");
 
         let psram = unsafe {
             const PSRAM_ADDRESS: usize = 0x11000000;
-
             let ptr = PSRAM_ADDRESS as *mut u8; // Using u8 for byte array
             let slice: &'static mut [u8] =
                 alloc::slice::from_raw_parts_mut(ptr, psram_size as usize);
@@ -236,9 +233,10 @@ fn main() -> ! {
     let int_divider = (clock_divider >> 8) as u16;
     let frak_divider = (clock_divider & 0xFF) as u8;
 
-    let i2s_din = pin_into_function!(pins, env!("PIN_I2S_DIN"), hal::gpio::FunctionPio1);
-    let i2s_bclk = pin_into_function!(pins, env!("PIN_I2S_BCLK"), hal::gpio::FunctionPio1);
-    let i2s_lrc = pin_into_function!(pins, env!("PIN_I2S_LRC"), hal::gpio::FunctionPio1);
+    let i2s_din = pin_select!(pins, env!("PIN_I2S_DIN")).into_function::<hal::gpio::FunctionPio1>();
+    let i2s_bclk =
+        pin_select!(pins, env!("PIN_I2S_BCLK")).into_function::<hal::gpio::FunctionPio1>();
+    let i2s_lrc = pin_select!(pins, env!("PIN_I2S_LRC")).into_function::<hal::gpio::FunctionPio1>();
     let audio_buffer: &'static mut [u16] =
         cortex_m::singleton!(: [u16; (2000 * 3) * 3]  = [0u16;  (2000 * 3) * 3 ])
             .unwrap()
@@ -259,12 +257,12 @@ fn main() -> ! {
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
     //SCREEN
-    let screen_data_command_pin = pins.gpio7.into_push_pull_output();
+    let screen_data_command_pin = pin_select!(pins, env!("PIN_SCREEN_DC")).into_push_pull_output();
 
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio4.into_function::<hal::gpio::FunctionPio0>();
+        pin_select!(pins, env!("PIN_SCREEN_SCLK")).into_function::<hal::gpio::FunctionPio0>();
     let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio5.into_function::<hal::gpio::FunctionPio0>();
+        pin_select!(pins, env!("PIN_SCREEN_MOSI")).into_function::<hal::gpio::FunctionPio0>();
 
     let display_buffer: &'static mut [u16] =
         cortex_m::singleton!(: [u16;(GAMEBOY_RENDER_WIDTH as usize) * 3]  = [0u16; (GAMEBOY_RENDER_WIDTH as usize ) * 3 ])
@@ -284,7 +282,7 @@ fn main() -> ! {
         streamer,
     );
 
-    let display_reset = pins.gpio8.into_push_pull_output();
+    let display_reset = pin_select!(pins, env!("PIN_SCREEN_RESET")).into_push_pull_output();
 
     let mut display = mipidsi::Builder::new(mipidsi::models::ILI9341Rgb565, display_interface)
         .reset_pin(display_reset)
@@ -304,14 +302,30 @@ fn main() -> ! {
     > = ScreenScaler::new();
 
     ////////////////////// JOYPAD
-    let mut b_button = pins.gpio16.into_pull_up_input().into_dyn_pin();
-    let mut a_button = pins.gpio17.into_pull_up_input().into_dyn_pin();
-    let mut right_button = pins.gpio18.into_pull_up_input().into_dyn_pin();
-    let mut down_button = pins.gpio19.into_pull_up_input().into_dyn_pin();
-    let mut left_button = pins.gpio20.into_pull_up_input().into_dyn_pin();
-    let mut up_button = pins.gpio21.into_pull_up_input().into_dyn_pin();
-    let mut select_button = pins.gpio22.into_pull_up_input().into_dyn_pin();
-    let mut start_button = pins.gpio26.into_pull_up_input().into_dyn_pin();
+    let mut b_button = pin_select!(pins, env!("PIN_B_BUTTON"))
+        .into_pull_up_input()
+        .into_dyn_pin();
+    let mut a_button = pin_select!(pins, env!("PIN_A_BUTTON"))
+        .into_pull_up_input()
+        .into_dyn_pin();
+    let mut right_button = pin_select!(pins, env!("PIN_RIGHT_BUTTON"))
+        .into_pull_up_input()
+        .into_dyn_pin();
+    let mut down_button = pin_select!(pins, env!("PIN_DOWN_BUTTON"))
+        .into_pull_up_input()
+        .into_dyn_pin();
+    let mut left_button = pin_select!(pins, env!("PIN_LEFT_BUTTON"))
+        .into_pull_up_input()
+        .into_dyn_pin();
+    let mut up_button = pin_select!(pins, env!("PIN_UP_BUTTON"))
+        .into_pull_up_input()
+        .into_dyn_pin();
+    let mut select_button = pin_select!(pins, env!("PIN_SELECT_BUTTON"))
+        .into_pull_up_input()
+        .into_dyn_pin();
+    let mut start_button = pin_select!(pins, env!("PIN_START_BUTTON"))
+        .into_pull_up_input()
+        .into_dyn_pin();
     let mut button_handler = InputButtonMapper::new(
         &mut a_button,
         &mut b_button,

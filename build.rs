@@ -83,7 +83,6 @@ fn main() {
         std::env::var("GAMEBOY_RENDER_HEIGHT").expect("GAMEBOY_RENDER_HEIGHT needs to be set")
     );
 
-    //PSRAM
     let psram: bool = std::env::var("ENABLE_PSRAM")
         .unwrap_or(String::from("true"))
         .to_lowercase()
@@ -91,14 +90,10 @@ fn main() {
         .unwrap_or(false);
     if psram {
         println!("cargo:rustc-cfg=feature=\"psram\"");
-        println!("cargo:rustc-env=ENABLE_PSRAM={}", true);
-    } else {
-        println!("cargo:rustc-env=ENABLE_PSRAM={}", false);
     }
 
     load_pin_mapping();
     println!("cargo:rerun-if-changed=pin_mapping.env");
-
     println!("cargo:rerun-if-changed=.env");
 }
 
@@ -117,12 +112,6 @@ fn load_pin_mapping() {
             env_map.insert(key, value);
         }
     }
-
-    // let psram_cs_pin = env_map
-    //     .get("PSRAM_CS_PIN")
-    //     .map(|s| s.clone())
-    //     .unwrap_or("47".to_string());
-    // println!("cargo:rustc-env=PSRAM_CS_PIN={}", psram_cs_pin);
 
     for (key, value) in env_map {
         println!("cargo:rustc-env=PIN_{}={}", key, value);
