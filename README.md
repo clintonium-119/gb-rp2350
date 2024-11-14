@@ -7,7 +7,7 @@ Supported Features:
 * Loading games from SD Card or directly from flash.
 * Running games bigger than the available memory of the Pi Pico.
 * Sound support.
-* Screen scaler, the image of the GB is scaled to different screens.
+* Screen scaler, the image of the GB is scaled to fit on different screens sizes.
 * PSRAM support for Pimoroni Pico Plus 2.
 * Support for multiple displays from the mipidsi library (https://github.com/almindor/mipidsi/tree/master/mipidsi)
 
