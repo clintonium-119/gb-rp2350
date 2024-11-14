@@ -47,7 +47,7 @@ embedded-alloc = "0.6.0"
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
 embedded-dma = "0.2.0"
-
+paste = "1.0.15"
 const-lru = "1.0.0"
 fugit = "0.3.6"
 
@@ -71,7 +71,9 @@ panic-probe = { version = "0.3.2", features = ["defmt", "print-defmt"] }
 const_env = "0.1.2"
 
 [build-dependencies]
-dotenv = "0.15.0"
+dotenvy = { git = "https://github.com/allan2/dotenvy.git", features = [
+    "macros",
+] }
 [profile.release]
 codegen-units = 1
 debug = false
@@ -95,3 +97,4 @@ flash_rom = []
 boot_sdcard_rom = []
 boot_flash_rom = []
 boot_none_rom = []
+psram = []

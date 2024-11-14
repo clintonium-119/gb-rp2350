@@ -28,6 +28,7 @@ use hal::fugit::RateExtU32;
 
 use hardware::display::ScreenScaler;
 
+use rp235x_hal::gpio::{FunctionSio, SioOutput};
 use rp235x_hal::timer::TimerDevice;
 use rp235x_hal::uart::{DataBits, StopBits, UartConfig};
 use rp235x_hal::{spi, Clock};
@@ -128,22 +129,27 @@ fn main() -> ! {
     .ok()
     .unwrap();
 
-    let psram_size = if ENABLE_PSRAM {
-        let _ = pins.gpio47.into_function::<hal::gpio::FunctionXipCs1>();
+    #[cfg(feature = "psram")]
+    let psram_size = {
+        let _ = pin_into_function!(pins, env!("PIN_PSRAM_CS"), hal::gpio::FunctionXipCs1);
         hardware::psram::psram_init(
             clocks.peripheral_clock.freq().to_Hz(),
             &pac.QMI,
             &pac.XIP_CTRL,
         )
-    } else {
-        0
     };
+    #[cfg(not(feature = "psram"))]
+    let psram_size = 0;
 
     let mut timer: rp235x_hal::Timer<rp235x_hal::timer::CopyableTimer0> =
         hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
 
     ///////////////////UART!
-    let uart0_pins = (pins.gpio0.into_function(), pins.gpio1.into_function());
+    let uart0_pins = (
+        pin_into_function!(pins, env!("PIN_UART_RX")),
+        pin_into_function!(pins, env!("PIN_UART_TX")),
+    );
+
     let uart0 = hal::uart::UartPeripheral::new(pac.UART0, uart0_pins, &mut pac.RESETS)
         .enable(
             UartConfig::new(115200.Hz(), DataBits::Eight, None, StopBits::One),
@@ -172,12 +178,13 @@ fn main() -> ! {
 
     ///////////////////////////////SD CARD
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio14.into_function::<hal::gpio::FunctionSpi>();
+        pin_into_function!(pins, env!("PIN_SD_CARD_SCLK"), hal::gpio::FunctionSpi);
+
     let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio15.into_function::<hal::gpio::FunctionSpi>();
-    let spi_cs = pins.gpio13.into_push_pull_output();
+        pin_into_function!(pins, env!("PIN_SD_CARD_MOSI"), hal::gpio::FunctionSpi);
+    let spi_cs = pin_into_function!(pins, env!("PIN_SD_CARD_CS"), FunctionSio<SioOutput>);
     let spi_miso: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pins.gpio12.into_function::<hal::gpio::FunctionSpi>();
+        pin_into_function!(pins, env!("PIN_SD_CARD_MISO"), hal::gpio::FunctionSpi);
 
     // Create the SPI driver instance for the SPI0 device
     let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk));
@@ -229,9 +236,9 @@ fn main() -> ! {
     let int_divider = (clock_divider >> 8) as u16;
     let frak_divider = (clock_divider & 0xFF) as u8;
 
-    let i2s_din = pins.gpio9.into_function::<hal::gpio::FunctionPio1>();
-    let i2s_bclk = pins.gpio10.into_function::<hal::gpio::FunctionPio1>();
-    let i2s_lrc = pins.gpio11.into_function::<hal::gpio::FunctionPio1>();
+    let i2s_din = pin_into_function!(pins, env!("PIN_I2S_DIN"), hal::gpio::FunctionPio1);
+    let i2s_bclk = pin_into_function!(pins, env!("PIN_I2S_BCLK"), hal::gpio::FunctionPio1);
+    let i2s_lrc = pin_into_function!(pins, env!("PIN_I2S_LRC"), hal::gpio::FunctionPio1);
     let audio_buffer: &'static mut [u16] =
         cortex_m::singleton!(: [u16; (2000 * 3) * 3]  = [0u16;  (2000 * 3) * 3 ])
             .unwrap()

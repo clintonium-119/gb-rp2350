@@ -17,3 +17,19 @@ impl OutputPin for DummyOutputPin {
         Ok(())
     }
 }
+
+#[macro_export]
+macro_rules! pin_into_function {
+    ($pins:expr, $pin_num:expr, $function_type: ty) => {{
+        // Generate the appropriate type and function call based on pin number
+        paste::paste! {
+               $pins.[<gpio $pin_num>].into_function::<$function_type>()
+        }
+    }};
+    ($pins:expr, $pin_num:expr) => {{
+        // Generate the appropriate type and function call based on pin number
+        paste::paste! {
+               $pins.[<gpio $pin_num>].into_function()
+        }
+    }};
+}

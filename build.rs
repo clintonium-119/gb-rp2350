@@ -2,11 +2,11 @@
 
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{self, PathBuf};
 
+#[dotenvy::load]
 fn main() {
-    dotenv::dotenv().ok(); // Load .env file
-                           // Put the linker script somewhere the linker can find it
+    // Put the linker script somewhere the linker can find it
     let out = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     println!("cargo:rustc-link-search={}", out.display());
 
@@ -90,10 +90,41 @@ fn main() {
         .parse()
         .unwrap_or(false);
     if psram {
+        println!("cargo:rustc-cfg=feature=\"psram\"");
         println!("cargo:rustc-env=ENABLE_PSRAM={}", true);
     } else {
         println!("cargo:rustc-env=ENABLE_PSRAM={}", false);
     }
 
+    load_pin_mapping();
+    println!("cargo:rerun-if-changed=pin_mapping.env");
+
     println!("cargo:rerun-if-changed=.env");
+}
+
+fn load_pin_mapping() {
+    let mut env_map = dotenvy::EnvLoader::with_path("pin_mapping.env")
+        .load()
+        .unwrap();
+
+    let custom_map = option_env!("CUSTOM_PIN_MAP");
+    if custom_map.is_some() {
+        println!("cargo:rerun-if-changed={}", custom_map.unwrap());
+        let custom_mapping_env = dotenvy::EnvLoader::with_path(custom_map.unwrap())
+            .load()
+            .unwrap();
+        for (key, value) in custom_mapping_env {
+            env_map.insert(key, value);
+        }
+    }
+
+    // let psram_cs_pin = env_map
+    //     .get("PSRAM_CS_PIN")
+    //     .map(|s| s.clone())
+    //     .unwrap_or("47".to_string());
+    // println!("cargo:rustc-env=PSRAM_CS_PIN={}", psram_cs_pin);
+
+    for (key, value) in env_map {
+        println!("cargo:rustc-env=PIN_{}={}", key, value);
+    }
 }
