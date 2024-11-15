@@ -15,7 +15,7 @@ pub fn detect_psram(qmi: &rp235x_hal::pac::QMI) -> u32 {
         // (via direct-mode BUSY flag) before it is safe to perform the first
         // direct-mode operation
         while qmi.direct_csr().read().busy().bit_is_set() {
-            asm::nop();
+            rp235x_hal::arch::nop();
         }
 
         qmi.direct_csr().modify(|_r, w| w.assert_cs1n().set_bit());
@@ -29,7 +29,7 @@ pub fn detect_psram(qmi: &rp235x_hal::pac::QMI) -> u32 {
         });
 
         while qmi.direct_csr().read().busy().bit_is_set() {
-            asm::nop();
+            rp235x_hal::arch::nop();
         }
 
         let _ = qmi.direct_rx().read().bits();
@@ -54,11 +54,11 @@ pub fn detect_psram(qmi: &rp235x_hal::pac::QMI) -> u32 {
             }
 
             while qmi.direct_csr().read().txempty().bit_is_clear() {
-                asm::nop();
+                rp235x_hal::arch::nop();
             }
 
             while qmi.direct_csr().read().busy().bit_is_set() {
-                asm::nop();
+                rp235x_hal::arch::nop();
             }
 
             if i == 5 {
@@ -135,7 +135,7 @@ pub fn psram_init(
     });
 
     while qmi.direct_csr().read().busy().bit_is_set() {
-        asm::nop();
+        rp235x_hal::arch::nop();
     }
 
     qmi.direct_tx().write(|w| unsafe {
@@ -145,7 +145,7 @@ pub fn psram_init(
     });
 
     while qmi.direct_csr().read().busy().bit_is_set() {
-        asm::nop();
+        rp235x_hal::arch::nop();
     }
 
     qmi.m1_timing().write(|w| unsafe {

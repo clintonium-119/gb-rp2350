@@ -106,14 +106,14 @@ fn main() -> ! {
         w
     });
     while pac.POWMAN.vreg().read().update_in_progress().bit_is_set() {
-        asm::nop();
+        rp235x_hal::arch::nop();
     }
     pac.POWMAN
         .vreg()
         .modify(|_, w| unsafe { w.bits(0x5AFE_0000).vsel().bits(0b01111) }); // 0b01111 = 1.30V
 
     while pac.POWMAN.vreg().read().update_in_progress().bit_is_set() {
-        asm::nop();
+        rp235x_hal::arch::nop();
     }
 
     let clocks = clocks::configure_overclock(
@@ -152,10 +152,9 @@ fn main() -> ! {
         const HEAP_SIZE: usize = 300_000 + (0x4000 * 6);
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
-
-        //  unsafe { ALLOCATOR.init(0x11000000 as usize, HEAP_SIZE) }
     }
 
+    //rp235x_hal::rom_data::f
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
     let (mut pio_0, sm0_0, sm0_1, _, _) = pac.PIO0.split(&mut pac.RESETS);
