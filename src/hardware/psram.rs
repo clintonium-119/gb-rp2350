@@ -1,5 +1,3 @@
-use cortex_m::asm;
-
 #[link_section = ".data"]
 #[inline(never)]
 pub fn detect_psram(qmi: &rp235x_hal::pac::QMI) -> u32 {

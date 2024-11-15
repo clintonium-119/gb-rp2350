@@ -11,7 +11,6 @@ mod rp_hal;
 mod util;
 
 use alloc::boxed::Box;
-use cortex_m::asm;
 use embedded_hal::digital::OutputPin;
 use embedded_sdmmc::sdcard::AcquireOpts;
 use gb_core::hardware::boot_rom::Bootrom;
