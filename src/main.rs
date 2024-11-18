@@ -10,11 +10,14 @@ mod rp_hal;
 
 mod util;
 
+use core::cell::UnsafeCell;
+
 use alloc::boxed::Box;
 use embedded_hal::digital::OutputPin;
 use embedded_sdmmc::sdcard::AcquireOpts;
 use gb_core::hardware::boot_rom::Bootrom;
 use gb_core::hardware::cartridge::Cartridge;
+use hardware::flash::{FlashBlock, FLASH_SECTOR_SIZE};
 use mipidsi::options::{Orientation, Rotation};
 use panic_probe as _;
 extern crate alloc;
@@ -80,6 +83,8 @@ const DISPLAY_HEIGHT: u16 = 320;
 const GAMEBOY_RENDER_WIDTH: u16 = 240;
 #[const_env::from_env]
 const GAMEBOY_RENDER_HEIGHT: u16 = 320;
+
+const ROM_FLASH_SIZE: usize = 1024 * 1024;
 
 #[hal::entry]
 fn main() -> ! {
@@ -153,7 +158,25 @@ fn main() -> ! {
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    //rp235x_hal::rom_data::f
+    // // let boot2 = unsafe { flash::get_boot2() };
+    // // let boott = byte_slice_cast::ToByteSlice::to_byte_slice(&boot2);
+    // // defmt::info!("BOOT start with {=[u8]:#x}", boott[0..10]);
+    // let read_data: [u8; 4096] = *TEST.read();
+    // defmt::info!("Addr of flash block is {:#x}", TEST.addr());
+    // defmt::info!("Contents start with {=[u8]:#x}", read_data[0..4]);
+    // let mut _data: [u8; 4096] = *TEST.read();
+    // _data[0] = 0x44u8;
+    // _data[1] = 0x46u8;
+    // _data[2] = 0x47u8;
+    // _data[3] = 0x48u8;
+    // //    core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    // unsafe { TEST.write_flash(&mut _data) };
+    // // core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    // let read_data: [u8; 4096] = *TEST.read();
+    // defmt::info!("Contents start with {=[u8]:#x}", read_data[0..4]);
+    // // core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    // // panic!("STOP");
+    // //rp235x_hal::rom_data::f
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
     let (mut pio_0, sm0_0, sm0_1, _, _) = pac.PIO0.split(&mut pac.RESETS);
@@ -374,6 +397,71 @@ pub static PICOTOOL_ENTRIES: [hal::binary_info::EntryAddr; 5] = [
     hal::binary_info::rp_program_build_attribute!(),
 ];
 
+#[cfg(feature = "flash_rom")]
+#[link_section = ".rodata"]
+static FLASH_ROM_DATA: FlashBlock<ROM_FLASH_SIZE> = FlashBlock {
+    data: UnsafeCell::new([0x55u8; ROM_FLASH_SIZE]),
+};
+
+#[inline(never)]
+#[cfg(feature = "flash_rom")]
+fn load_rom<
+    'a,
+    D: embedded_sdmmc::BlockDevice + 'a,
+    T: embedded_sdmmc::TimeSource + 'a,
+    DT: TimerDevice + 'a,
+    const MAX_DIRS: usize,
+    const MAX_FILES: usize,
+    const MAX_VOLUMES: usize,
+>(
+    mut volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+    timer: crate::hal::Timer<DT>,
+) -> Box<dyn Cartridge + 'a> {
+    let rom_name = env!("ROM_PATH");
+    let mut volume = volume_manager
+        .open_volume(embedded_sdmmc::VolumeIdx(0))
+        .unwrap();
+    let mut root_dir = volume.open_root_dir().unwrap();
+    let mut rom_file = root_dir
+        .open_file_in_dir(rom_name, embedded_sdmmc::Mode::ReadOnly)
+        .unwrap();
+
+    if ROM_FLASH_SIZE < rom_file.length() as usize {
+        panic!(
+            "Ram size not bigh enough for Rom of size: {}",
+            rom_file.length()
+        )
+    }
+    defmt::info!("Loading rom into flash");
+    let mut offsets = rom_file.length() / FLASH_SECTOR_SIZE;
+    if rom_file.length() % FLASH_SECTOR_SIZE != 0 {
+        offsets += 1;
+    }
+
+    let mut buffer = [0u8; FLASH_SECTOR_SIZE as usize];
+    for x in 0..offsets {
+        defmt::info!("Loading rom into flash for offset: {}", x);
+        rom_file.seek_from_start(x * FLASH_SECTOR_SIZE).unwrap();
+        rom_file.read(&mut buffer).unwrap();
+        let write_result = unsafe { FLASH_ROM_DATA.write_flash(x, &mut buffer) };
+        defmt::info!(
+            "Result from write into flash for offset: {}: {}",
+            x,
+            write_result
+        );
+    }
+
+    rom_file.close().unwrap();
+    root_dir.close().unwrap();
+    volume.close().unwrap();
+    defmt::info!("Loading complete");
+
+    let rom_manager =
+        gameboy::static_rom::StaticRomManager::new(FLASH_ROM_DATA.read(), volume_manager, timer);
+    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
+    gb_rom.into_cartridge()
+}
+
 #[cfg(feature = "sdcard_rom")]
 #[inline(always)]
 fn load_rom<
@@ -404,25 +492,25 @@ fn load_rom<
     gb_rom.into_cartridge()
 }
 
-#[cfg(feature = "flash_rom")]
-#[inline(always)]
-fn load_rom<
-    'a,
-    D: embedded_sdmmc::BlockDevice + 'a,
-    T: embedded_sdmmc::TimeSource + 'a,
-    DT: TimerDevice + 'a,
-    const MAX_DIRS: usize,
-    const MAX_FILES: usize,
-    const MAX_VOLUMES: usize,
->(
-    volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
-    timer: crate::hal::Timer<DT>,
-) -> Box<dyn Cartridge + 'a> {
-    let game_rom = include_bytes!(env!("ROM_PATH"));
-    let rom_manager = gameboy::static_rom::StaticRomManager::new(game_rom, volume_manager, timer);
-    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
-    gb_rom.into_cartridge()
-}
+// #[cfg(feature = "flash_rom")]
+// #[inline(always)]
+// fn load_rom<
+//     'a,
+//     D: embedded_sdmmc::BlockDevice + 'a,
+//     T: embedded_sdmmc::TimeSource + 'a,
+//     DT: TimerDevice + 'a,
+//     const MAX_DIRS: usize,
+//     const MAX_FILES: usize,
+//     const MAX_VOLUMES: usize,
+// >(
+//     volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+//     timer: crate::hal::Timer<DT>,
+// ) -> Box<dyn Cartridge + 'a> {
+//     let game_rom = include_bytes!(env!("ROM_PATH"));
+//     let rom_manager = gameboy::static_rom::StaticRomManager::new(game_rom, volume_manager, timer);
+//     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
+//     gb_rom.into_cartridge()
+// }
 
 #[cfg(feature = "boot_sdcard_rom")]
 #[inline(always)]
