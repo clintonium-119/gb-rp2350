@@ -68,10 +68,12 @@ Take a look at the `pin_mapping.env` file for a reference of all pin names.
 
 # Rom Loading Modes
 The emulator supports 3 different ways to load roms:
-* "SDCARD": Rom is loaded at runtime from the root of the sd card. In "SDCARD" mode the Rom may not fully fit on RAM, chunks of the ROM are cached and loaded as needed, you can control the size of this cache with by changing "ROM_CACHE_SIZE", default = 10. SDCARD mode may have some stutter for roms that switch between banks too often.
-* "FLASH": Rom is stored in the flash of the Pi Pico. The rom size is limited by the amount of flash available in the Pi Pico 2 (approx 3.5mb).
+* "RAM": Rom is loaded at runtime from the root of the sd card. In "RAM" mode the Rom may not fully fit on RAM, chunks of the ROM are cached and loaded as needed, you can control the size of this cache with by changing "ROM_CACHE_SIZE", default = 10. SDCARD mode may have some stutter for roms that switch between banks too often.
+* "FLASH": Load rom from SDCARD into the flash storage of the Pi Pico. The rom size is limited by the amount of flash available in the Pi Pico 2 (approx 3.5mb).
 * "PSRAM": Load rom from SDCARD into PSRAM if it is available (Pimoroni Pico Plus 2).
  
+ Note: If you are using are using a Pimoroni Pico Plus 2 or other boards with 8mb+ PSRAM modules choose "PSRAM". Otherwise choose "FLASH" mode, the flash of the Pi Pico has a long but limited number of writes so it will at some point degrade your Pi Pico.
+
 
  # Display drivers
  The emulator supports different displays thru the `mipidsi` library. To enable the settings for your display set the `DISPLAY_DRIVER` paramter from the environment variables files to point to the correct driver.

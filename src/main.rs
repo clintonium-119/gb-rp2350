@@ -158,25 +158,6 @@ fn main() -> ! {
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    // // let boot2 = unsafe { flash::get_boot2() };
-    // // let boott = byte_slice_cast::ToByteSlice::to_byte_slice(&boot2);
-    // // defmt::info!("BOOT start with {=[u8]:#x}", boott[0..10]);
-    // let read_data: [u8; 4096] = *TEST.read();
-    // defmt::info!("Addr of flash block is {:#x}", TEST.addr());
-    // defmt::info!("Contents start with {=[u8]:#x}", read_data[0..4]);
-    // let mut _data: [u8; 4096] = *TEST.read();
-    // _data[0] = 0x44u8;
-    // _data[1] = 0x46u8;
-    // _data[2] = 0x47u8;
-    // _data[3] = 0x48u8;
-    // //    core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
-    // unsafe { TEST.write_flash(&mut _data) };
-    // // core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
-    // let read_data: [u8; 4096] = *TEST.read();
-    // defmt::info!("Contents start with {=[u8]:#x}", read_data[0..4]);
-    // // core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
-    // // panic!("STOP");
-    // //rp235x_hal::rom_data::f
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
     let (mut pio_0, sm0_0, sm0_1, _, _) = pac.PIO0.split(&mut pac.RESETS);
@@ -216,7 +197,7 @@ fn main() -> ! {
         VolumeManager::new_with_limits(sdcard, hardware::sdcard::DummyTimesource::default(), 5000);
 
     let boot_rom = load_boot_rom(&mut volume_mgr);
-    #[cfg(feature = "psram")]
+    #[cfg(feature = "psram_rom")]
     let cartridge = {
         defmt::info!("Using PRSAM");
 
@@ -238,7 +219,7 @@ fn main() -> ! {
         let cartridge = load_rom_to_psram(volume_mgr, timer, psram);
         cartridge
     };
-    #[cfg(not(feature = "psram"))]
+    #[cfg(not(feature = "psram_rom"))]
     let cartridge = load_rom(volume_mgr, timer);
 
     //////////////////////AUDIO SETUP
@@ -462,7 +443,7 @@ fn load_rom<
     gb_rom.into_cartridge()
 }
 
-#[cfg(feature = "sdcard_rom")]
+#[cfg(feature = "ram_rom")]
 #[inline(always)]
 fn load_rom<
     'a,
@@ -492,27 +473,6 @@ fn load_rom<
     gb_rom.into_cartridge()
 }
 
-// #[cfg(feature = "flash_rom")]
-// #[inline(always)]
-// fn load_rom<
-//     'a,
-//     D: embedded_sdmmc::BlockDevice + 'a,
-//     T: embedded_sdmmc::TimeSource + 'a,
-//     DT: TimerDevice + 'a,
-//     const MAX_DIRS: usize,
-//     const MAX_FILES: usize,
-//     const MAX_VOLUMES: usize,
-// >(
-//     volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
-//     timer: crate::hal::Timer<DT>,
-// ) -> Box<dyn Cartridge + 'a> {
-//     let game_rom = include_bytes!(env!("ROM_PATH"));
-//     let rom_manager = gameboy::static_rom::StaticRomManager::new(game_rom, volume_manager, timer);
-//     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
-//     gb_rom.into_cartridge()
-// }
-
-#[cfg(feature = "boot_sdcard_rom")]
 #[inline(always)]
 fn load_boot_rom<
     'a,
@@ -529,6 +489,13 @@ fn load_boot_rom<
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
     let mut root_dir = volume0.open_root_dir().unwrap();
+
+    if root_dir
+        .find_directory_entry(env!("BOOT_ROM_PATH"))
+        .is_err()
+    {
+        return Bootrom::new(None);
+    }
 
     let dmg_boot_bin: &'static mut [u8] = cortex_m::singleton!(: [u8; 0x100]  = [0u8; 0x100 ])
         .unwrap()
@@ -581,41 +548,4 @@ fn load_rom_to_psram<
     let rom_manager = gameboy::static_rom::StaticRomManager::new(ram, volume_manager, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
     gb_rom.into_cartridge()
-}
-
-#[cfg(feature = "boot_flash_rom")]
-#[inline(always)]
-fn load_boot_rom<
-    'a,
-    D: embedded_sdmmc::BlockDevice,
-    T: embedded_sdmmc::TimeSource,
-    const MAX_DIRS: usize,
-    const MAX_FILES: usize,
-    const MAX_VOLUMES: usize,
->(
-    _volume_manager: &'a mut embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
-) -> Bootrom {
-    use gb_core::hardware::boot_rom::BootromData;
-    let game_rom = include_bytes!(env!("BOOT_ROM_PATH"));
-
-    let dmg_boot_bin: &'static mut [u8] = cortex_m::singleton!(: [u8; 0x100]  = [0u8; 0x100 ])
-        .unwrap()
-        .as_mut_slice();
-    dmg_boot_bin.copy_from_slice(game_rom);
-    Bootrom::new(Some(BootromData::from_bytes(dmg_boot_bin)))
-}
-
-#[cfg(feature = "boot_none_rom")]
-#[inline(always)]
-fn load_boot_rom<
-    'a,
-    D: embedded_sdmmc::BlockDevice,
-    T: embedded_sdmmc::TimeSource,
-    const MAX_DIRS: usize,
-    const MAX_FILES: usize,
-    const MAX_VOLUMES: usize,
->(
-    _volume_manager: &'a mut embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
-) -> Bootrom {
-    Bootrom::new(None)
 }

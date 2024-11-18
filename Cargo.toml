@@ -86,9 +86,6 @@ overflow-checks = false
 
 
 [features]
-sdcard_rom = []
+ram_rom = []
 flash_rom = []
-boot_sdcard_rom = []
-boot_flash_rom = []
-boot_none_rom = []
-psram = []
+psram_rom = []
