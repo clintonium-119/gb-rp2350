@@ -68,7 +68,7 @@ Take a look at the `pin_mapping.env` file for a reference of all pin names.
 
 # Rom Loading Modes
 The emulator supports 3 different ways to load roms:
-* "RAM": Rom is loaded at runtime from the root of the sd card. In "RAM" mode the Rom may not fully fit on RAM, chunks of the ROM are cached and loaded as needed, you can control the size of this cache with by changing "ROM_CACHE_SIZE", default = 10. SDCARD mode may have some stutter for roms that switch between banks too often.
+* "RAM": Rom is loaded at runtime from the root of the sd card. In "RAM" mode the Rom may not fully fit on RAM, chunks of the ROM are cached and loaded as needed, you can control the size of this cache with by changing "ROM_CACHE_SIZE", default = 10. RAM mode may have some stutter for roms that switch between banks too often.
 * "FLASH": Load rom from SDCARD into the flash storage of the Pi Pico. The rom size is limited by the amount of flash available in the Pi Pico 2 (approx 3.5mb).
 * "PSRAM": Load rom from SDCARD into PSRAM if it is available (Pimoroni Pico Plus 2).
  
@@ -92,5 +92,6 @@ The SD card is used to store game roms and save game progress. For this project,
 
 * Insert your SD card in a Windows computer and format it as FAT 32
 * Copy your .gb file as `rom.gb` to the SD card root folder (subfolders are not supported at this time)
+* Optionally copy the boot rom of the Gameboy into the root of the SD card as `dmg_boot.bin`. 
 * Insert the SD card into the SD card slot.
 
