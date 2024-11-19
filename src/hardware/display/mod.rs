@@ -19,4 +19,6 @@ trait LineTransfer {
         line: &'static mut [Self::Item],
         size: u32,
     ) -> &'static mut [Self::Item];
+
+    fn wait(&mut self);
 }
