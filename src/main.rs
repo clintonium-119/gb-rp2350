@@ -8,6 +8,7 @@ mod hardware;
 
 mod rp_hal;
 mod spi_device;
+mod ui;
 mod util;
 
 use alloc::boxed::Box;
@@ -31,13 +32,15 @@ use mipidsi::models::Model;
 use mipidsi::options::{Orientation, Rotation};
 use mipidsi::Display;
 use panic_probe as _;
-use util::DummyOutputPin;
+use ui::loading::LoadingScreen;
+use ui::ListDisplay;
+use util::{DummyOutputPin, LimitedViewList};
 extern crate alloc;
 
 use embedded_sdmmc::{SdCard, VolumeManager};
 use gameboy::display::GameboyLineBufferDisplay;
 use gameboy::{GameEmulationHandler, GameboyButtonHandler, InputButtonMapper};
-use gb_core::gameboy::GameBoy;
+use gb_core::gameboy::{GameBoy, SCREEN_HEIGHT};
 use hal::fugit::RateExtU32;
 
 use hardware::display::ScreenScaler;
@@ -260,6 +263,36 @@ fn main() -> ! {
 
     //SCREEN
 
+    // let screen_data_command_pin = pin_select!(pins, env!("PIN_SCREEN_DC")).into_push_pull_output();
+    // let display_reset = pin_select!(pins, env!("PIN_SCREEN_RESET")).into_push_pull_output();
+    // let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+    //     pin_select!(pins, 2).into_function::<hal::gpio::FunctionSpi>();
+    // let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
+    //     pin_select!(pins, 3).into_function::<hal::gpio::FunctionSpi>();
+
+    // let spi_bus = hal::spi::Spi::<_, _, _, 8>::new(pac.SPI0, (spi_mosi, spi_sclk));
+    // let spi_bus = spi_bus.init(
+    //     &mut pac.RESETS,
+    //     clocks.peripheral_clock.freq(),
+    //     40.MHz(),
+    //     embedded_hal::spi::MODE_0,
+    // );
+
+    // let sk = spi_device::exclusive::ExclusiveDevice::new_no_delay(spi_bus, DummyOutputPin).unwrap();
+    // let csj = display_interface_spi::SPIInterface::new(sk, screen_data_command_pin);
+
+    // let mut display = mipidsi::Builder::new(DisplayDriver, csj)
+    //     .reset_pin(display_reset)
+    //     //.invert_colors(mipidsi::options::ColorInversion::Inverted)
+    //     .color_order(mipidsi::options::ColorOrder::Bgr)
+    //     .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
+    //     .orientation(Orientation {
+    //         rotation: Rotation::Deg90,
+    //         mirrored: true,
+    //     })
+    //     .init(&mut timer)
+    //     .unwrap();
+
     let display_buffer: &'static mut [u16] =
     cortex_m::singleton!(: [u16;(GAMEBOY_RENDER_WIDTH as usize) * 3]  = [0u16; (GAMEBOY_RENDER_WIDTH as usize ) * 3 ])
         .unwrap()
@@ -288,6 +321,7 @@ fn main() -> ! {
     let mut display = mipidsi::Builder::new(DisplayDriver, display_interface)
         .reset_pin(display_reset)
         .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
+        .color_order(mipidsi::options::ColorOrder::Bgr)
         .orientation(Orientation {
             rotation: Rotation::Deg90,
             mirrored: true,
@@ -359,6 +393,7 @@ fn main() -> ! {
     };
     #[cfg(not(feature = "psram_rom"))]
     let cartridge = load_rom(volume_mgr, &name, timer);
+    // let cartridge = load_rom(&mut display, volume_mgr, &name, timer);
 
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
@@ -440,9 +475,6 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
     > = ScreenScaler::new();
     let mut loop_counter: usize = 0;
     loop {
-        defmt::info!("Free Mem: {}", ALLOCATOR.free());
-        defmt::info!("Used Mem: {}", ALLOCATOR.used());
-
         let start_time = timer.get_counter();
         display
             .set_pixels(
@@ -467,58 +499,6 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
     }
 }
 
-struct LimitedViewList<'a, T: Sized> {
-    list: &'a [T],
-    max: usize,
-    current_cursor: usize,
-}
-
-impl<'a, T: Clone> LimitedViewList<'a, T> {
-    #[inline(always)]
-    pub fn new(list: &'a [T], max: usize) -> Self {
-        Self {
-            list,
-            max: usize::min(max, list.len()),
-            current_cursor: 0,
-        }
-    }
-    #[inline(always)]
-    pub fn next(&mut self) {
-        if self.current_cursor < self.list.len() {
-            self.current_cursor += 1;
-        }
-    }
-    #[inline(always)]
-    pub fn current_cursor(&self) -> usize {
-        self.current_cursor
-    }
-    #[inline(always)]
-    pub fn max(&self) -> usize {
-        self.max
-    }
-    #[inline(always)]
-    pub fn len(&self) -> usize {
-        self.list.len()
-    }
-    #[inline(always)]
-    pub fn prev(&mut self) {
-        if self.current_cursor != 0 {
-            self.current_cursor -= 1;
-        }
-    }
-    #[inline(always)]
-    pub fn into_iter(&self) -> core::slice::Iter<'a, T> {
-        defmt::info!(
-            "Render list between: {} and {}",
-            self.current_cursor,
-            self.current_cursor + self.max
-        );
-        let iter = self.list[self.current_cursor..self.current_cursor + self.max].into_iter();
-
-        iter
-    }
-}
-
 #[inline(always)]
 pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
     display: &mut D,
@@ -530,6 +510,7 @@ pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
 ) -> Result<usize, D::Error> {
     let mut selected_rom = 0u8;
     let mut button_clicked = false;
+
     display.clear(Rgb565::CSS_GRAY)?;
 
     let title_style = MonoTextStyleBuilder::new()
@@ -553,17 +534,22 @@ pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
     );
     let max_items_to_display = ((DISPLAY_WIDTH / (20 + 5)) as usize) - 1;
     let mut items = LimitedViewList::new(rom_list, max_items_to_display);
-    list.draw(items.into_iter(), selected_rom, display)?;
 
+    let foo = LoadingScreen::new(
+        Point::new(0, 0),
+        Size::new(DISPLAY_HEIGHT as u32, DISPLAY_WIDTH as u32),
+        "HELLO".to_string(),
+    );
+    foo.draw(display, 60f32)?;
     loop {
         if up_button.is_low().unwrap() && !button_clicked {
             if selected_rom != 0 {
                 selected_rom = selected_rom - 1;
                 defmt::info!("up_button Start redraw: {}", selected_rom);
-                list.draw(items.into_iter(), selected_rom, display)?;
+                list.draw(items.iter(), selected_rom, display)?;
             } else {
                 items.prev();
-                list.draw(items.into_iter(), selected_rom, display)?;
+                list.draw(items.iter(), selected_rom, display)?;
             }
             button_clicked = true;
         }
@@ -571,15 +557,15 @@ pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
             if selected_rom + 1 < items.max() as u8 {
                 selected_rom = selected_rom + 1;
                 defmt::info!("down_button Start redraw: {}", selected_rom);
-                list.draw(items.into_iter(), selected_rom, display)?;
+                list.draw(items.iter(), selected_rom, display)?;
             } else if (items.len() - items.current_cursor()) > items.max() {
                 items.next();
-                list.draw(items.into_iter(), selected_rom, display)?;
+                list.draw(items.iter(), selected_rom, display)?;
             }
             button_clicked = true;
         }
         if select_button.is_low().unwrap() {
-            return Ok(items.current_cursor + selected_rom as usize);
+            return Ok(items.current_cursor() + selected_rom as usize);
         }
 
         if down_button.is_high().unwrap() && up_button.is_high().unwrap() {
@@ -609,6 +595,7 @@ static FLASH_ROM_DATA: FlashBlock<ROM_FLASH_SIZE> = FlashBlock {
 #[cfg(feature = "flash_rom")]
 fn load_rom<
     'a,
+    //  DISPLAY: DrawTarget<Color = Rgb565>,
     D: embedded_sdmmc::BlockDevice + 'a,
     T: embedded_sdmmc::TimeSource + 'a,
     DT: TimerDevice + 'a,
@@ -616,6 +603,7 @@ fn load_rom<
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
 >(
+    //  display: &mut DISPLAY,
     mut volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     rom_name: &str,
     timer: crate::hal::Timer<DT>,
@@ -641,6 +629,7 @@ fn load_rom<
     }
 
     let mut buffer = [0u8; FLASH_SECTOR_SIZE as usize];
+    let mut percent = 0;
     for x in 0..offsets {
         defmt::info!("Loading rom into flash for offset: {}", x);
         rom_file.seek_from_start(x * FLASH_SECTOR_SIZE).unwrap();
@@ -668,6 +657,7 @@ fn load_rom<
 #[inline(always)]
 fn load_rom<
     'a,
+    //  DISPLAY: DrawTarget<Color = Rgb565>,
     D: embedded_sdmmc::BlockDevice + 'a,
     T: embedded_sdmmc::TimeSource + 'a,
     DT: TimerDevice + 'a,
@@ -675,6 +665,7 @@ fn load_rom<
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
 >(
+    //  display: &mut DISPLAY,
     volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     rom_name: &str,
     timer: crate::hal::Timer<DT>,
@@ -781,79 +772,3 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, Rectangle},
     text::{Baseline, Text},
 };
-
-struct ListDisplay {
-    position: Point,
-    item_height: i32,
-    item_padding: i32,
-    width: i32,
-}
-
-impl ListDisplay {
-    pub fn new(position: Point, width: i32, item_height: i32, item_padding: i32) -> Self {
-        ListDisplay {
-            position,
-            item_height: item_height,   // Height for each item
-            item_padding: item_padding, // Padding between items
-            width,
-        }
-    }
-
-    pub fn draw<D>(
-        &self,
-        items: core::slice::Iter<'_, String>,
-        selected: u8,
-        display: &mut D,
-    ) -> Result<(), D::Error>
-    where
-        D: DrawTarget<Color = Rgb565>,
-    {
-        // Draw each item
-        for (index, item) in items.enumerate() {
-            let y_offset = index as i32 * (self.item_height + self.item_padding);
-            let item_position = self.position + Point::new(0, y_offset);
-
-            let rec_style = if index == selected as usize {
-                let mut style = PrimitiveStyle::with_fill(Rgb565::BLACK);
-                style.stroke_color = Some(Rgb565::WHITE);
-                style.stroke_width = 1;
-                style
-            } else {
-                let mut style = PrimitiveStyle::with_fill(Rgb565::WHITE);
-                style.stroke_color = Some(Rgb565::WHITE);
-                style.stroke_width = 1;
-                style
-            };
-
-            let text_style = if index == selected as usize {
-                MonoTextStyleBuilder::new()
-                    .font(&FONT_6X9)
-                    .text_color(Rgb565::WHITE)
-                    .build()
-            } else {
-                MonoTextStyleBuilder::new()
-                    .font(&FONT_6X9)
-                    .text_color(Rgb565::BLACK)
-                    .build()
-            };
-
-            Rectangle::new(
-                item_position,
-                Size::new(self.width as u32, self.item_height as u32),
-            )
-            .into_styled(rec_style)
-            .draw(display)?;
-
-            // Draw text
-            Text::with_baseline(
-                item,
-                item_position + Point::new(5, self.item_height / 2),
-                text_style,
-                Baseline::Middle,
-            )
-            .draw(display)?;
-        }
-
-        Ok(())
-    }
-}
