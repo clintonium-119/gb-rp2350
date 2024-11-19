@@ -124,19 +124,7 @@ impl LoadingScreen {
             )
             .draw(display)?;
         }
-        // Progress percentage text
-        // "Loading..." text
-        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::new(31, 31, 31)); // White text
-        let progress_text = format!("{}%", self.current_progress);
-        Text::new(
-            &progress_text,
-            Point::new(
-                self.position.x + self.size.width as i32 - 35,
-                self.position.y + 20,
-            ),
-            text_style,
-        )
-        .draw(display)?;
+
         Ok(())
     }
 }
