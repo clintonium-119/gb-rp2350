@@ -265,37 +265,13 @@ fn main() -> ! {
     let screen_data_command_pin = pin_select!(pins, env!("PIN_SCREEN_DC")).into_push_pull_output();
     let display_reset = pin_select!(pins, env!("PIN_SCREEN_RESET")).into_push_pull_output();
     let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pin_select!(pins, 2).into_function::<hal::gpio::FunctionSpi>();
+        pin_select!(pins, 2).into_function::<hal::gpio::FunctionPio0>();
     let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pin_select!(pins, 3).into_function::<hal::gpio::FunctionSpi>();
-
-    // let spi_bus = hal::spi::Spi::<_, _, _, 8>::new(pac.SPI0, (spi_mosi, spi_sclk));
-    // let spi_bus = spi_bus.init(
-    //     &mut pac.RESETS,
-    //     clocks.peripheral_clock.freq(),
-    //     40.MHz(),
-    //     embedded_hal::spi::MODE_0,
-    // );
-
-    // let sk = spi_device::exclusive::ExclusiveDevice::new_no_delay(spi_bus, DummyOutputPin).unwrap();
-    // let csj = display_interface_spi::SPIInterface::new(sk, screen_data_command_pin);
-
-    // let mut display = mipidsi::Builder::new(DisplayDriver, csj)
-    //     .reset_pin(display_reset)
-    //     .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
-    //     .orientation(Orientation {
-    //         rotation: Rotation::Deg90,
-    //         mirrored: true,
-    //     })
-    //     .init(&mut timer)
-    //     .unwrap();
-
-    let spi_sclk = spi_sclk.into_function::<hal::gpio::FunctionPio0>();
-    let spi_mosi = spi_mosi.into_function::<hal::gpio::FunctionPio0>();
+        pin_select!(pins, 3).into_function::<hal::gpio::FunctionPio0>();
 
     let streamer = hardware::display::DmaStreamer::new(dma.ch0, dma.ch1, display_buffer);
     let display_interface = hardware::display::SpiPioDmaInterface::new(
-        (2, 0),
+        (3, 0),
         screen_data_command_pin,
         &mut pio_0,
         sm0_1,
@@ -373,11 +349,11 @@ fn main() -> ! {
                 alloc::slice::from_raw_parts_mut(ptr, psram_size as usize);
             slice
         };
-        let cartridge = load_rom_to_psram(volume_mgr, timer, psram);
+        let cartridge = load_rom_to_psram(volume_mgr, timer, &name, psram);
         cartridge
     };
     #[cfg(not(feature = "psram_rom"))]
-    let cartridge = load_rom(volume_mgr, timer);
+    let cartridge = load_rom(volume_mgr, &name, timer);
 
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
     let scaler: ScreenScaler<
@@ -398,38 +374,6 @@ fn main() -> ! {
         &mut right_button,
     );
     led_pin.set_high().unwrap();
-
-    // let things = display.release();
-    // let spi_iterface = things.0;
-    // let (spi, screen_data_command_pin) = spi_iterface.release();
-    // let (bus, _sds) = spi.free();
-
-    // let (df, (spi_sclk, spi_mosi)) = bus.free();
-
-    // let spi_sclk = spi_sclk.into_function::<hal::gpio::FunctionPio0>();
-    // let spi_mosi = spi_mosi.into_function::<hal::gpio::FunctionPio0>();
-
-    // let streamer = hardware::display::DmaStreamer::new(dma.ch0, dma.ch1, display_buffer);
-    // let display_interface = hardware::display::SpiPioDmaInterface::new(
-    //     (2, 0),
-    //     screen_data_command_pin,
-    //     &mut pio_0,
-    //     sm0_1,
-    //     sm0_0,
-    //     spi_sclk.id().num,
-    //     spi_mosi.id().num,
-    //     streamer,
-    // );
-
-    // let mut display = mipidsi::Builder::new(DisplayDriver, display_interface)
-    //     .reset_pin(things.2.unwrap())
-    //     .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
-    //     .orientation(Orientation {
-    //         rotation: Rotation::Deg90,
-    //         mirrored: true,
-    //     })
-    //     .init(&mut timer)
-    //     .unwrap();
 
     let mut loop_counter: usize = 0;
 
@@ -478,9 +422,6 @@ impl<'a, T: Clone> LimitedViewList<'a, T> {
         }
     }
     pub fn next(&mut self) {
-        // if (self.list.len() - self.max) > self.current_cursor {
-        //     self.current_cursor += 1;
-        // }
         if self.current_cursor < self.list.len() {
             self.current_cursor += 1;
         }
@@ -514,19 +455,7 @@ impl<'a, T: Clone> LimitedViewList<'a, T> {
     }
 }
 
-// impl<'a, T> IntoIterator for LimitedViewList<'a, T> {
-//     type IntoIter = &'a [T];
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         todo!()
-//     }
-// }
-
-// #[inline(never)]
-// #[cold]
-
 #[inline(always)]
-
 pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
     display: &mut D,
     rom_list: &[String],
@@ -624,9 +553,9 @@ fn load_rom<
     const MAX_VOLUMES: usize,
 >(
     mut volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+    rom_name: &str,
     timer: crate::hal::Timer<DT>,
 ) -> Box<dyn Cartridge + 'a> {
-    let rom_name = env!("ROM_PATH");
     let mut volume = volume_manager
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
@@ -683,6 +612,7 @@ fn load_rom<
     const MAX_VOLUMES: usize,
 >(
     volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
+    rom_name: &str,
     timer: crate::hal::Timer<DT>,
 ) -> Box<dyn Cartridge + 'a> {
     defmt::info!("Loading from SDCARD");
@@ -696,7 +626,7 @@ fn load_rom<
         MAX_DIRS,
         MAX_FILES,
         MAX_VOLUMES,
-    > = gameboy::rom::SdRomManager::new(env!("ROM_PATH"), volume_manager, timer);
+    > = gameboy::rom::SdRomManager::new(rom_name, volume_manager, timer);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
     gb_rom.into_cartridge()
 }
@@ -748,9 +678,9 @@ fn load_rom_to_psram<
 >(
     mut volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     timer: crate::hal::Timer<DT>,
+    rom_name: &str,
     ram: &'static mut [u8],
 ) -> Box<dyn Cartridge + 'a> {
-    let rom_name = env!("ROM_PATH");
     let mut volume = volume_manager
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
