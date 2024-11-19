@@ -17,6 +17,7 @@ use alloc::string::{String, ToString};
 use core::cell::{RefCell, UnsafeCell};
 use core::convert::Infallible;
 use core::sync::atomic::{compiler_fence, Ordering};
+use display_interface::WriteOnlyDataCommand;
 use embedded_graphics::mono_font::iso_8859_15::FONT_6X12;
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::{InputPin, OutputPin};
@@ -24,15 +25,18 @@ use embedded_hal_async::delay;
 use embedded_sdmmc::sdcard::AcquireOpts;
 use gb_core::hardware::boot_rom::Bootrom;
 use gb_core::hardware::cartridge::Cartridge;
+use gb_core::hardware::Screen;
 use hardware::flash::{FlashBlock, FLASH_SECTOR_SIZE};
+use mipidsi::models::Model;
 use mipidsi::options::{Orientation, Rotation};
+use mipidsi::Display;
 use panic_probe as _;
 use util::DummyOutputPin;
 extern crate alloc;
 
 use embedded_sdmmc::{SdCard, VolumeManager};
 use gameboy::display::GameboyLineBufferDisplay;
-use gameboy::{GameEmulationHandler, InputButtonMapper};
+use gameboy::{GameEmulationHandler, GameboyButtonHandler, InputButtonMapper};
 use gb_core::gameboy::GameBoy;
 use hal::fugit::RateExtU32;
 
@@ -201,9 +205,8 @@ fn main() -> ! {
             use_crc: true,
         },
     );
-    let mut volume_mgr: VolumeManager<_, _, 3, 2, 1> =
-        VolumeManager::new_with_limits(sdcard, hardware::sdcard::DummyTimesource::default(), 5000);
 
+    let mut volume_mgr = VolumeManager::new(sdcard, hardware::sdcard::DummyTimesource::default());
     let mut volume0 = volume_mgr
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
@@ -327,7 +330,9 @@ fn main() -> ! {
         &mut a_button,
     )
     .unwrap();
+
     let name = rom_list[selected_rom].clone();
+    //let name = "PKRED.GB";
     defmt::info!("Menu END: {}", defmt::Display2Format(&name));
 
     #[cfg(feature = "psram_rom")]
@@ -379,12 +384,61 @@ fn main() -> ! {
 
     const MIDDLE_HEIGHT: u16 = (DISPLAY_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
     const MIDDLE_WIDTH: u16 = (DISPLAY_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
+
+    run_game_boy(gameboy, display, button_handler);
     loop {
-        defmt::info!("Free Mem: {}", ALLOCATOR.free());
-        defmt::info!("Used Mem: {}", ALLOCATOR.used());
+        crate::hal::arch::nop();
+    }
+    // loop {
+    //     defmt::info!("Free Mem: {}", ALLOCATOR.free());
+    //     defmt::info!("Used Mem: {}", ALLOCATOR.used());
 
-        let start_time = timer.get_counter();
+    //     let start_time = timer.get_counter();
 
+    //     display
+    //         .set_pixels(
+    //             MIDDLE_HEIGHT,
+    //             MIDDLE_WIDTH,
+    //             (GAMEBOY_RENDER_HEIGHT - 1) as u16 + MIDDLE_HEIGHT,
+    //             (GAMEBOY_RENDER_WIDTH - 1) as u16 + MIDDLE_WIDTH,
+    //             scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
+    //         )
+    //         .unwrap();
+    //     let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
+    //     let diff: fugit::Duration<u64, 1, 1000000> = end_time - start_time;
+    //     let milliseconds = diff.to_millis();
+    //     defmt::info!(
+    //         "Loop: {}, Time elapsed: {}:{}",
+    //         loop_counter,
+    //         milliseconds / 1000,
+    //         milliseconds % 1000
+    //     );
+    //     loop_counter += 1;
+    // }
+}
+
+//impl<DI, M, RST> Display<DI, M, RST>
+// where
+
+#[inline(never)]
+pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>>(
+    mut gameboy: GameBoy<'a, GameboyLineBufferDisplay<D>>,
+    mut display: Display<DI, M, RST>,
+    mut button_handler: BH,
+) where
+    DI: WriteOnlyDataCommand,
+    M: Model<ColorFormat = Rgb565>,
+    RST: OutputPin,
+{
+    const MIDDLE_HEIGHT: u16 = (DISPLAY_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
+    const MIDDLE_WIDTH: u16 = (DISPLAY_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
+    let scaler: ScreenScaler<
+        144,
+        160,
+        { GAMEBOY_RENDER_WIDTH as usize },
+        { GAMEBOY_RENDER_HEIGHT as usize },
+    > = ScreenScaler::new();
+    loop {
         display
             .set_pixels(
                 MIDDLE_HEIGHT,
@@ -394,16 +448,6 @@ fn main() -> ! {
                 scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
-        let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
-        let diff: fugit::Duration<u64, 1, 1000000> = end_time - start_time;
-        let milliseconds = diff.to_millis();
-        defmt::info!(
-            "Loop: {}, Time elapsed: {}:{}",
-            loop_counter,
-            milliseconds / 1000,
-            milliseconds % 1000
-        );
-        loop_counter += 1;
     }
 }
 
@@ -414,6 +458,7 @@ struct LimitedViewList<'a, T: Sized> {
 }
 
 impl<'a, T: Clone> LimitedViewList<'a, T> {
+    #[inline(always)]
     pub fn new(list: &'a [T], max: usize) -> Self {
         Self {
             list,
@@ -421,28 +466,31 @@ impl<'a, T: Clone> LimitedViewList<'a, T> {
             current_cursor: 0,
         }
     }
+    #[inline(always)]
     pub fn next(&mut self) {
         if self.current_cursor < self.list.len() {
             self.current_cursor += 1;
         }
     }
+    #[inline(always)]
     pub fn current_cursor(&self) -> usize {
         self.current_cursor
     }
+    #[inline(always)]
     pub fn max(&self) -> usize {
         self.max
     }
-
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.list.len()
     }
-
+    #[inline(always)]
     pub fn prev(&mut self) {
         if self.current_cursor != 0 {
             self.current_cursor -= 1;
         }
     }
-
+    #[inline(always)]
     pub fn into_iter(&self) -> core::slice::Iter<'a, T> {
         defmt::info!(
             "Render list between: {} and {}",
