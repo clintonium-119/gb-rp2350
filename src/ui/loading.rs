@@ -1,139 +1,142 @@
 use alloc::{format, string::String};
 use embedded_graphics::{
-    mono_font::{ascii::FONT_8X13_BOLD, MonoTextStyleBuilder},
     pixelcolor::Rgb565,
     prelude::*,
-    primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle},
-    text::{Baseline, Text},
+    primitives::{PrimitiveStyleBuilder, Rectangle},
+    text::Text,
+};
+
+use embedded_graphics::{
+    draw_target::DrawTarget,
+    geometry::{Point, Size},
+    mono_font::{ascii::FONT_6X10, MonoTextStyle},
+    Drawable,
 };
 
 pub struct LoadingScreen {
     position: Point,
     size: Size,
-    title: String,
+    current_progress: u8,
+    rom_name: String,
 }
 
 impl LoadingScreen {
-    pub fn new(position: Point, size: Size, title: String) -> Self {
-        LoadingScreen {
+    pub fn new(position: Point, size: Size, rom_name: String) -> Self {
+        Self {
             position,
             size,
-            title,
+            current_progress: 0,
+            rom_name,
         }
     }
 
-    pub fn draw<D>(&self, display: &mut D, percentage: f32) -> Result<(), D::Error>
+    /// Draws the complete loading screen including background, border and progress bar
+    pub fn draw<D>(&mut self, display: &mut D, progress: u8) -> Result<(), D::Error>
     where
         D: DrawTarget<Color = Rgb565>,
     {
-        // Colors
-        let background_color = Rgb565::CSS_DARK_BLUE; // Dark blue
-        let border_color = Rgb565::CSS_SKY_BLUE; // Slightly lighter blue
-        let bar_color = Rgb565::GREEN; // Cyan
-                                       //let bar_color = Rgb565::new(0, 31, 31); // Cyan
-        let text_color = Rgb565::CSS_WHITE;
+        self.current_progress = progress.min(100);
 
-        // Draw background
+        // Background
         Rectangle::new(self.position, self.size)
-            .into_styled(PrimitiveStyle::with_fill(background_color))
+            .into_styled(
+                PrimitiveStyleBuilder::new()
+                    .fill_color(Rgb565::new(2, 10, 25)) // Dark blue background
+                    .build(),
+            )
             .draw(display)?;
 
-        // Text style
-        let text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_8X13_BOLD)
-            .text_color(text_color)
-            .build();
+        // Border
+        Rectangle::new(self.position, self.size)
+            .into_styled(
+                PrimitiveStyleBuilder::new()
+                    .stroke_color(Rgb565::new(10, 31, 31)) // Lighter blue border
+                    .stroke_width(2)
+                    .build(),
+            )
+            .draw(display)?;
 
-        // Draw title
-        Text::with_baseline(
-            &self.title,
-            self.position + Point::new(self.size.width as i32 / 2, 20),
+        // "Loading..." text
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::new(31, 31, 31)); // White text
+        Text::new(
+            "Loading...",
+            Point::new(self.position.x + 10, self.position.y + 20),
             text_style,
-            Baseline::Middle,
         )
         .draw(display)?;
 
-        // Progress bar configuration
-        let bar_width = (self.size.width as i32 * 4) / 5; // 80% of screen width
-        let bar_height = 20;
-        let bar_x = (self.size.width as i32 - bar_width) / 2;
-        let bar_y = (self.size.height as i32 * 2) / 3; // Position at 2/3 down
+        self.draw_progress_bar(display)?;
 
-        // // Draw progress bar background (border)
-        // RoundedRectangle::new(
-        //     Point::new(bar_x, bar_y),
-        //     Size::new(bar_width as u32, bar_height as u32),
-        //     Size::new(5, 5), // Corner radius
-        // )
-        // .into_styled(
-        //     PrimitiveStyleBuilder::new()
-        //         .stroke_color(border_color)
-        //         .stroke_width(2)
-        //         .fill_color(background_color)
-        //         .build(),
-        // )
-        // .draw(display)?;
-
-        // Draw progress bar background (border)
-        RoundedRectangle::with_equal_corners(
-            Rectangle::new(
-                Point::new(bar_x, bar_y),
-                Size::new(bar_width as u32, bar_height as u32),
+        Text::new(
+            &self.rom_name,
+            Point::new(
+                self.position.x + (self.size.width as i32 / 2) - 15, // Centered horizontally
+                self.position.y + (self.size.height as i32 / 2) + 25, // Below progress bar
             ),
-            Size::new(5, 5), // Corner radius
+            text_style,
+        )
+        .draw(display)?;
+
+        Ok(())
+    }
+
+    /// Only updates the progress bar portion of the loading screen
+    pub fn update_progress<D>(&mut self, display: &mut D, progress: u8) -> Result<(), D::Error>
+    where
+        D: DrawTarget<Color = Rgb565>,
+    {
+        self.current_progress = progress.min(100);
+        self.draw_progress_bar(display)
+    }
+
+    /// Helper function to draw the progress bar
+    fn draw_progress_bar<D>(&self, display: &mut D) -> Result<(), D::Error>
+    where
+        D: DrawTarget<Color = Rgb565>,
+    {
+        // Progress bar background
+        let bar_height: u32 = 20;
+        //let bar_y = self.position.y + self.size.height as i32 - bar_height as i32 - 10;
+        let bar_y = self.position.y + (self.size.height as i32 / 2) - (bar_height as i32 / 2);
+
+        Rectangle::new(
+            Point::new(self.position.x + 10, bar_y),
+            Size::new(self.size.width - 20, bar_height),
         )
         .into_styled(
             PrimitiveStyleBuilder::new()
-                .stroke_color(border_color)
-                .stroke_width(2)
-                .fill_color(background_color)
+                .fill_color(Rgb565::new(5, 15, 15)) // Darker progress bar background
                 .build(),
         )
         .draw(display)?;
 
-        // Draw progress bar fill
-        let fill_width = (bar_width as f32 * percentage.clamp(0.0, 100.0) / 100.0) as i32;
-        if fill_width > 0 {
-            // RoundedRectangle::new(
-            //     Point::new(bar_x + 2, bar_y + 2),
-            //     Size::new((fill_width - 4) as u32, (bar_height - 4) as u32),
-            //     Size::new(4, 4),
-            // )
-            // .into_styled(PrimitiveStyle::with_fill(bar_color))
-            // .draw(display)?;
-
-            RoundedRectangle::with_equal_corners(
-                Rectangle::new(
-                    Point::new(bar_x + 2, bar_y + 2),
-                    Size::new((fill_width - 4) as u32, (bar_height - 4) as u32),
-                ),
-                Size::new(4, 4),
+        // Active progress bar
+        let progress_width = ((self.size.width - 20) as u32 * self.current_progress as u32) / 100;
+        if progress_width > 0 {
+            Rectangle::new(
+                Point::new(self.position.x + 10, bar_y),
+                Size::new(progress_width, bar_height),
             )
-            .into_styled(PrimitiveStyle::with_fill(bar_color))
+            .into_styled(
+                PrimitiveStyleBuilder::new()
+                    .fill_color(Rgb565::new(0, 31, 31)) // Bright blue progress
+                    .build(),
+            )
             .draw(display)?;
         }
-
-        // Draw percentage text
-        let percentage_text = format!("{}%", percentage as i32);
-        Text::with_baseline(
-            &percentage_text,
-            self.position + Point::new(self.size.width as i32 / 2, bar_y + bar_height + 15),
+        // Progress percentage text
+        // "Loading..." text
+        let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::new(31, 31, 31)); // White text
+        let progress_text = format!("{}%", self.current_progress);
+        Text::new(
+            &progress_text,
+            Point::new(
+                self.position.x + self.size.width as i32 - 35,
+                self.position.y + 20,
+            ),
             text_style,
-            Baseline::Middle,
         )
         .draw(display)?;
-
-        // Draw loading animation dots
-        let dots = ".".repeat(((percentage as i32 / 20) % 4) as usize);
-        let loading_text = format!("Loading{}", dots);
-        Text::with_baseline(
-            &loading_text,
-            self.position + Point::new(self.size.width as i32 / 2, bar_y - 15),
-            text_style,
-            Baseline::Middle,
-        )
-        .draw(display)?;
-
         Ok(())
     }
 }

@@ -9,7 +9,7 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, Rectangle},
 };
 pub mod loading;
-
+pub mod rom_select;
 pub struct ListDisplay {
     position: Point,
     item_height: i32,
