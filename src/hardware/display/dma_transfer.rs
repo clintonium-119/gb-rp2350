@@ -78,6 +78,20 @@ where
         free_buffer.free()
     }
 
+    pub fn wait_for_completion(&mut self) {
+        let dma_state = core::mem::replace(&mut self.dma, None).unwrap();
+
+        let new_dma_state = match dma_state {
+            DmaState::IDLE(transfer) => transfer,
+            DmaState::RUNNING(transfer) => {
+                let (free_buffer, dma) = transfer.wait();
+                self.second_buffer = Some(free_buffer);
+                dma
+            }
+        };
+        self.dma = Some(DmaState::IDLE(new_dma_state))
+    }
+
     pub fn free(mut self) -> (CH1, CH2, TO, &'static mut [T], &'static mut [T]) {
         let dma_state = core::mem::replace(&mut self.dma, None).unwrap();
 
@@ -116,6 +130,10 @@ where
         max: u32,
     ) -> &'static mut [Self::Item] {
         self.do_tranfer(line, max)
+    }
+
+    fn wait(&mut self) {
+        self.wait_for_completion();
     }
 }
 

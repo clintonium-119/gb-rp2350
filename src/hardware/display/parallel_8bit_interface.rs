@@ -109,6 +109,12 @@ where
         self.sm.exec_instruction(instruction);
     }
 
+    fn wait_free(&mut self) {
+        while !self.tx.as_ref().unwrap().is_empty() {
+            crate::hal::arch::nop();
+        }
+    }
+
     #[allow(dead_code)]
     pub fn free(self, pio: &mut PIO<P>) -> (UninitStateMachine<(P, SM)>, RS) {
         let (sm, prg) = self.sm.uninit(self.rx, self.tx.unwrap());
@@ -191,6 +197,7 @@ where
 {
     #[inline(always)]
     fn send_commands(&mut self, cmd: display_interface::DataFormat<'_>) -> Result {
+        //    self.wait_free();
         self.rs.set_low().map_err(|_| DisplayError::RSError)?;
         self.send_data(cmd)?;
         Ok(())
@@ -198,6 +205,7 @@ where
 
     #[inline(always)]
     fn send_data(&mut self, buf: display_interface::DataFormat<'_>) -> Result {
+        //      self.wait_free();
         self.rs.set_high().map_err(|_| DisplayError::RSError)?;
         self.send_data(buf)?;
         Ok(())

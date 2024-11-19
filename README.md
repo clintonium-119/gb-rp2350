@@ -44,8 +44,8 @@ Pending Features:
 * SD CSK = GP14
 * SD MOSI = GP15
 * LCD CS = (GND)
-* LCD CLK = GP4
-* LCD SDI = GP5
+* LCD CLK = GP2
+* LCD SDI = GP3
 * LCD RS = GP7
 * LCD RST = GP8
 * LCD LED = (3.3v)
@@ -72,7 +72,7 @@ The emulator supports 3 different ways to load roms:
 * "FLASH": Load rom from SDCARD into the flash storage of the Pi Pico. The rom size is limited by the amount of flash available in the Pi Pico 2 (approx 3.5mb).
 * "PSRAM": Load rom from SDCARD into PSRAM if it is available (Pimoroni Pico Plus 2).
  
- Note: If you are using are using a Pimoroni Pico Plus 2 or other boards with 8mb+ PSRAM modules choose "PSRAM". Otherwise choose "FLASH" mode, the flash of the Pi Pico has a long but limited number of writes so it will at some point degrade your Pi Pico.
+ Note: If you are using are using a Pimoroni Pico Plus 2 or other boards with 8mb+ PSRAM modules choose "PSRAM". Otherwise choose "FLASH" mode, the flash of the Pi Pico has a long but limited number of writes so it will at some point degrade your Pi Pico. If you need to run a game too big to fit on flash use the "RAM" mode.
 
 
  # Display drivers

@@ -106,7 +106,7 @@ where
         if width_position > 0 {
             buffer = transfer.send_scanline(buffer, width_position as u32);
         }
-
+        transfer.wait();
         (transfer, buffer)
     }
 
@@ -134,7 +134,7 @@ where
         if width_position > 0 {
             buffer = transfer.send_scanline(buffer, width_position as u32);
         }
-
+        transfer.wait();
         (transfer, buffer)
     }
 }

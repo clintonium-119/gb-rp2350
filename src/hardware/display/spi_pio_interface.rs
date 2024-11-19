@@ -2,6 +2,7 @@ use crate::rp_hal::hal;
 
 use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
 
+use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use hal::dma::HalfWord;
 use hal::pio::{PIOExt, PIO};
@@ -11,6 +12,7 @@ type Result = core::result::Result<(), DisplayError>;
 use hal::dma::Byte;
 use hal::dma::SingleChannel;
 use hal::pio::Stopped;
+use rp235x_hal::timer::TimerDevice;
 
 use super::DmaStreamer;
 
@@ -21,10 +23,12 @@ pub struct SpiPioDmaInterface<
     SM2: StateMachineIndex,
     CH1,
     CH2,
+    TD: TimerDevice,
 > {
     streamer: DmaStreamer<CH1, CH2>,
     mode: Option<PioMode<P, SM1, SM2>>,
     rs: RS,
+    timer: crate::hal::Timer<TD>,
 }
 
 enum PioMode<P: PIOExt, SM1: StateMachineIndex, SM2: StateMachineIndex> {
@@ -47,7 +51,7 @@ struct PioContainer<P: PIOExt, SM: StateMachineIndex, TxSize, State> {
     tx: Tx<(P, SM), TxSize>,
     rx: Rx<(P, SM)>,
 }
-impl<RS, P, SM1, SM2, CH1, CH2> SpiPioDmaInterface<RS, P, SM1, SM2, CH1, CH2>
+impl<RS, P, SM1, SM2, CH1, CH2, TD: TimerDevice> SpiPioDmaInterface<RS, P, SM1, SM2, CH1, CH2, TD>
 where
     P: PIOExt,
     SM1: StateMachineIndex,
@@ -65,8 +69,10 @@ where
         clk: u8,
         tx: u8,
         streamer: DmaStreamer<CH1, CH2>,
+        timer: crate::hal::Timer<TD>,
     ) -> Self {
-        let video_program = pio_proc::pio_asm!(".side_set 1 ", "out pins, 1 side 0", "nop side 1",);
+        let video_program =
+            pio_proc::pio_asm!(".side_set 1 ", "out pins, 1 side 0 ", "nop side 1",);
 
         let video_program_installed = pio.install(&video_program.program).unwrap();
         let (mut sm_8b, rx_8b, tx_8b) =
@@ -113,10 +119,11 @@ where
             streamer: streamer,
             rs,
             mode: Some(PioMode::ByteMode((byte_sm, half_word_sm))),
+            timer,
         }
     }
 
-    #[cold]
+    //   #[cold]
     fn set_8bit_mode(
         pio_mode: PioMode<P, SM1, SM2>,
     ) -> (
@@ -142,7 +149,7 @@ where
         new_mode
     }
 
-    #[cold]
+    //  #[cold]
     fn set_16bit_mode(
         pio_mode: PioMode<P, SM1, SM2>,
     ) -> (
@@ -172,8 +179,8 @@ where
     pub fn is_idle(&mut self) -> bool {
         let mode = self.mode.take().unwrap();
         let is_idle = match mode {
-            PioMode::ByteMode(ref pio) => pio.0.tx.is_empty(),
-            PioMode::HalfWordMode(ref pio) => pio.1.tx.is_empty(),
+            PioMode::ByteMode(ref pio) => pio.0.tx.has_stalled(),
+            PioMode::HalfWordMode(ref pio) => pio.1.tx.has_stalled(),
         };
         self.mode = Some(mode);
         is_idle
@@ -257,8 +264,8 @@ where
     }
 }
 
-impl<RS, P, SM1, SM2, CH1: SingleChannel, CH2: SingleChannel> WriteOnlyDataCommand
-    for SpiPioDmaInterface<RS, P, SM1, SM2, CH1, CH2>
+impl<RS, P, SM1, SM2, CH1: SingleChannel, CH2: SingleChannel, TD: TimerDevice> WriteOnlyDataCommand
+    for SpiPioDmaInterface<RS, P, SM1, SM2, CH1, CH2, TD>
 where
     P: PIOExt,
     SM1: StateMachineIndex,
@@ -267,15 +274,21 @@ where
 {
     #[inline(always)]
     fn send_commands(&mut self, cmd: display_interface::DataFormat<'_>) -> Result {
-        while !self.is_idle() {}
+        while !self.is_idle() {
+            crate::hal::arch::nop();
+        }
         self.rs.set_low().map_err(|_| DisplayError::RSError)?;
+        self.timer.delay_ns(9000);
         self.send_data(cmd)?;
         Ok(())
     }
     #[inline(always)]
     fn send_data(&mut self, buf: display_interface::DataFormat<'_>) -> Result {
-        while !self.is_idle() {}
+        while !self.is_idle() {
+            crate::hal::arch::nop();
+        }
         self.rs.set_high().map_err(|_| DisplayError::RSError)?;
+        self.timer.delay_ns(9000);
         self.send_data(buf)?;
         Ok(())
     }
