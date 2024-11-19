@@ -27,8 +27,6 @@ fn main() {
 
     println!("cargo:rerun-if-changed=build.rs");
 
-    let rom_path = std::env::var("ROM_PATH").expect("ROM_PATH needs to be set");
-    println!("cargo:rustc-env=ROM_PATH={}", rom_path);
     let rom_location = std::env::var("ROM_LOCATION").expect("ROM_LOCATION needs to be set");
     match rom_location.as_str() {
         "RAM" => {

@@ -361,12 +361,6 @@ fn main() -> ! {
     let cartridge = load_rom(volume_mgr, &name, timer);
 
     let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
-    let scaler: ScreenScaler<
-        144,
-        160,
-        { GAMEBOY_RENDER_WIDTH as usize },
-        { GAMEBOY_RENDER_HEIGHT as usize },
-    > = ScreenScaler::new();
 
     let mut button_handler = InputButtonMapper::new(
         &mut a_button,
@@ -380,15 +374,20 @@ fn main() -> ! {
     );
     led_pin.set_high().unwrap();
 
-    let mut loop_counter: usize = 0;
-
-    const MIDDLE_HEIGHT: u16 = (DISPLAY_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
-    const MIDDLE_WIDTH: u16 = (DISPLAY_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
-
-    run_game_boy(gameboy, display, button_handler);
+    run_game_boy(gameboy, display, button_handler, timer);
     loop {
         crate::hal::arch::nop();
     }
+
+    // const MIDDLE_HEIGHT: u16 = (DISPLAY_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
+    // const MIDDLE_WIDTH: u16 = (DISPLAY_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
+    // let scaler: ScreenScaler<
+    //     144,
+    //     160,
+    //     { GAMEBOY_RENDER_WIDTH as usize },
+    //     { GAMEBOY_RENDER_HEIGHT as usize },
+    // > = ScreenScaler::new();
+    // let mut loop_counter: usize = 0;
     // loop {
     //     defmt::info!("Free Mem: {}", ALLOCATOR.free());
     //     defmt::info!("Used Mem: {}", ALLOCATOR.used());
@@ -425,6 +424,7 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
     mut gameboy: GameBoy<'a, GameboyLineBufferDisplay<D>>,
     mut display: Display<DI, M, RST>,
     mut button_handler: BH,
+    timer: crate::hal::Timer<D>,
 ) where
     DI: WriteOnlyDataCommand,
     M: Model<ColorFormat = Rgb565>,
@@ -438,7 +438,12 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
         { GAMEBOY_RENDER_WIDTH as usize },
         { GAMEBOY_RENDER_HEIGHT as usize },
     > = ScreenScaler::new();
+    let mut loop_counter: usize = 0;
     loop {
+        defmt::info!("Free Mem: {}", ALLOCATOR.free());
+        defmt::info!("Used Mem: {}", ALLOCATOR.used());
+
+        let start_time = timer.get_counter();
         display
             .set_pixels(
                 MIDDLE_HEIGHT,
@@ -448,6 +453,17 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
                 scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
+
+        let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
+        let diff: fugit::Duration<u64, 1, 1000000> = end_time - start_time;
+        let milliseconds = diff.to_millis();
+        defmt::info!(
+            "Loop: {}, Time elapsed: {}:{}",
+            loop_counter,
+            milliseconds / 1000,
+            milliseconds % 1000
+        );
+        loop_counter += 1;
     }
 }
 
