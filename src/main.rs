@@ -14,7 +14,7 @@ mod util;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
-use core::cell::{RefCell, UnsafeCell};
+use core::cell::RefCell;
 
 use display_interface::WriteOnlyDataCommand;
 
@@ -28,7 +28,7 @@ use ui::rom_select::select_rom;
 use embedded_sdmmc::sdcard::AcquireOpts;
 use gb_core::hardware::boot_rom::Bootrom;
 use gb_core::hardware::cartridge::Cartridge;
-use hardware::flash::{FlashBlock, FLASH_SECTOR_SIZE};
+use hardware::flash::FLASH_SECTOR_SIZE;
 use mipidsi::models::Model;
 use mipidsi::options::{Orientation, Rotation};
 use mipidsi::Display;
@@ -355,7 +355,7 @@ fn main() -> ! {
                 alloc::slice::from_raw_parts_mut(ptr, psram_size as usize);
             slice
         };
-        let cartridge = load_rom_to_psram(volume_mgr, timer, &name, psram);
+        let cartridge = load_rom_to_psram(&mut display, volume_mgr, timer, &name, psram);
         cartridge
     };
     #[cfg(not(feature = "psram_rom"))]
@@ -622,10 +622,11 @@ fn load_boot_rom<
     Bootrom::new(Some(BootromData::from_bytes(dmg_boot_bin)))
 }
 
-#[cfg(feature = "psram_rom")]
+//#[cfg(feature = "psram_rom")]
 #[inline(always)]
 fn load_rom_to_psram<
     'a,
+    DISPLAY: DrawTarget<Color = Rgb565>,
     D: embedded_sdmmc::BlockDevice + 'a,
     T: embedded_sdmmc::TimeSource + 'a,
     DT: TimerDevice + 'a,
@@ -633,6 +634,7 @@ fn load_rom_to_psram<
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
 >(
+    display: &mut DISPLAY,
     mut volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     timer: crate::hal::Timer<DT>,
     rom_name: &str,
@@ -652,9 +654,40 @@ fn load_rom_to_psram<
             rom_file.length()
         )
     }
+    let mut offsets = rom_file.length() / FLASH_SECTOR_SIZE;
+    if rom_file.length() % FLASH_SECTOR_SIZE != 0 {
+        offsets += 1;
+    }
     defmt::info!("Loading rom into psram");
+
+    let mut buffer = [0u8; FLASH_SECTOR_SIZE as usize];
+
+    let mut loading_screen = LoadingScreen::new(
+        Point::new(0, 0),
+        Size::new(DISPLAY_HEIGHT as u32, DISPLAY_WIDTH as u32),
+        rom_name.to_string(),
+    );
+    if let Err(_) = loading_screen.draw(display, 0) {};
+
     rom_file.seek_from_start(0u32).unwrap();
-    rom_file.read(ram).unwrap();
+    for x in 0..offsets {
+        defmt::info!("Loading rom into flash for offset: {}", x);
+        rom_file.seek_from_start(x * FLASH_SECTOR_SIZE).unwrap();
+        rom_file.read(&mut buffer).unwrap();
+        // let write_result = unsafe { FLASH_ROM_DATA.write_flash(x, &mut buffer) };
+        let addr = FLASH_SECTOR_SIZE * x;
+        ram[addr as usize..addr as usize + FLASH_SECTOR_SIZE as usize].copy_from_slice(&buffer);
+        let percent = (x as f32 / offsets as f32) * 100f32;
+        defmt::info!(
+            "Result from write into flash for offset: {}, percent: {}",
+            x,
+            percent
+        );
+        if let Err(_) = loading_screen.update_progress(display, percent as u8) {};
+    }
+
+    // rom_file.seek_from_start(0u32).unwrap();
+    // rom_file.read(ram).unwrap();
     rom_file.close().unwrap();
     root_dir.close().unwrap();
     volume.close().unwrap();
