@@ -1,4 +1,4 @@
-use alloc::{format, string::String};
+use alloc::string::String;
 use embedded_graphics::{
     pixelcolor::Rgb565,
     prelude::*,

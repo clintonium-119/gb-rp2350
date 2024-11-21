@@ -25,7 +25,7 @@ embedded-graphics-core = "0.4.0"
 embedded-graphics = "0.8.1"
 display-interface-spi = "0.5.0"
 mipidsi = { version = "0.8.0", default-features = false }
-gb-core = { git = "https://github.com/Altaflux/rust-gb.git", rev = "282ea98bde0d0876987511ab52da8bbeb5f8cc67", default-features = false }
+gb-core = { git = "https://github.com/Altaflux/rust-gb.git", rev = "7a0a235a486fb509ca18d3fc2fb609dabde4a11a", default-features = false }
 #gb-core = { path = "C:\\Users\\pablo\\projects\\rust-gb\\gb-core", default-features = false }
 embedded-hal-bus = { version = "0.2.0", features = ["defmt-03"] }
 embedded-io = "0.6.1"
@@ -76,14 +76,14 @@ debug-assertions = false
 incremental = false
 lto = 'fat'
 opt-level = 3
-overflow-checks = false
+overflow-checks = true
 
 [profile.release.build-override]
 codegen-units = 1
 debug = false
 debug-assertions = false
 opt-level = 3
-overflow-checks = false
+overflow-checks = true
 
 
 [features]

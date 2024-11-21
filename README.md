@@ -10,9 +10,9 @@ Supported Features:
 * Screen scaler, the image of the GB is scaled to fit on different screens sizes.
 * PSRAM support for Pimoroni Pico Plus 2.
 * Support for multiple displays from the mipidsi library (https://github.com/almindor/mipidsi/tree/master/mipidsi)
+* Game rom selection menu.
 
 Pending Features:
-* Game selection menu.
 * Performance improvements.
 * Gameboy color support.
 
@@ -72,7 +72,7 @@ The emulator supports 3 different ways to load roms:
 * "FLASH": Load rom from SDCARD into the flash storage of the Pi Pico. The rom size is limited by the amount of flash available in the Pi Pico 2 (approx 3.5mb).
 * "PSRAM": Load rom from SDCARD into PSRAM if it is available (Pimoroni Pico Plus 2).
  
- Note: If you are using are using a Pimoroni Pico Plus 2 or other boards with 8mb+ PSRAM modules choose "PSRAM". Otherwise choose "FLASH" mode, the flash of the Pi Pico has a long but limited number of writes so it will at some point degrade your Pi Pico. If you need to run a game too big to fit on flash use the "RAM" mode.
+Note: If you are using are using a Pimoroni Pico Plus 2 or other boards with 8mb+ PSRAM modules choose "PSRAM". Otherwise choose "FLASH" mode, the flash of the Pi Pico has a long but limited number of writes so it will at some point degrade your Pi Pico. If you need to run a game too big to fit on flash use the "RAM" mode.
 
 
  # Display drivers
@@ -86,6 +86,7 @@ The emulator supports 3 different ways to load roms:
 * ST7789 = mipidsi::models::ST7789
 * ST7796 = mipidsi::models::ST7796
 
+If the display is not under your required orientation you can change the `DISPLAY_ROTATION` and `DISPLAY_MIRRORED` to adjust to your setup.
 
 # Preparing the SD card
 The SD card is used to store game roms and save game progress. For this project, you will need a FAT 32 formatted Micro SD card with roms you legally own. Roms must have the .gb extension.

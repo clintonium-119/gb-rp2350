@@ -7,7 +7,6 @@ mod gameboy;
 mod hardware;
 
 mod rp_hal;
-mod spi_device;
 mod ui;
 mod util;
 
@@ -89,19 +88,46 @@ static SERIAL: static_cell::StaticCell<
     >,
 > = static_cell::StaticCell::new();
 
-#[const_env::from_env]
+#[const_env::from_env("DISPLAY_WIDTH")]
 const DISPLAY_WIDTH: u16 = 240;
-#[const_env::from_env]
+#[const_env::from_env("DISPLAY_HEIGHT")]
 const DISPLAY_HEIGHT: u16 = 320;
 #[const_env::from_env]
-const GAMEBOY_RENDER_WIDTH: u16 = 240;
+const GAMEBOY_RENDER_WIDTH: u16 = 320;
 #[const_env::from_env]
-const GAMEBOY_RENDER_HEIGHT: u16 = 320;
+const GAMEBOY_RENDER_HEIGHT: u16 = 240;
 
-const ROM_FLASH_SIZE: usize = 1024 * 1024;
+#[const_env::from_env]
+const DISPLAY_ROTATION: u16 = 0;
+
+#[const_env::from_env]
+const DISPLAY_MIRRORED: bool = false;
+
+const RENDER_WIDTH: u16 = if DISPLAY_ROTATION == 90 || DISPLAY_ROTATION == 270 {
+    DISPLAY_HEIGHT
+} else {
+    DISPLAY_WIDTH
+};
+const RENDER_HEIGHT: u16 = if DISPLAY_ROTATION == 90 || DISPLAY_ROTATION == 270 {
+    DISPLAY_WIDTH
+} else {
+    DISPLAY_HEIGHT
+};
 
 #[hal::entry]
 fn main() -> ! {
+    const {
+        assert!(
+            RENDER_WIDTH >= GAMEBOY_RENDER_WIDTH,
+            "Gameboy render width cannot be smaller than the width of the screen"
+        )
+    }
+    const {
+        assert!(
+            RENDER_HEIGHT >= GAMEBOY_RENDER_HEIGHT,
+            "Gameboy render height cannot be smaller than the width of the screen"
+        )
+    }
     let mut pac = hal::pac::Peripherals::take().unwrap();
 
     // Grab our singleton objects
@@ -285,16 +311,22 @@ fn main() -> ! {
         timer,
     );
 
-    let mut display = mipidsi::Builder::new(DisplayDriver, display_interface)
+    let display_builder = mipidsi::Builder::new(DisplayDriver, display_interface)
         .reset_pin(display_reset)
         .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
         .color_order(mipidsi::options::ColorOrder::Bgr)
         .orientation(Orientation {
-            rotation: Rotation::Deg90,
-            mirrored: true,
-        })
-        .init(&mut timer)
-        .unwrap();
+            rotation: match DISPLAY_ROTATION {
+                0 => Rotation::Deg0,
+                90 => Rotation::Deg90,
+                180 => Rotation::Deg180,
+                270 => Rotation::Deg270,
+                _ => unreachable!(),
+            },
+            mirrored: DISPLAY_MIRRORED,
+        });
+
+    let mut display = display_builder.init(&mut timer).unwrap();
 
     ////////////////////// JOYPAD
     let mut b_button = pin_select!(pins, env!("PIN_B_BUTTON"))
@@ -333,7 +365,6 @@ fn main() -> ! {
     .unwrap();
 
     let name = rom_list[selected_rom].clone();
-    //let name = "PKRED.GB";
     defmt::info!("Menu END: {}", defmt::Display2Format(&name));
 
     #[cfg(feature = "psram_rom")]
@@ -361,9 +392,9 @@ fn main() -> ! {
     #[cfg(not(feature = "psram_rom"))]
     let cartridge = load_rom(&mut display, volume_mgr, &name, timer);
 
-    let mut gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
+    let gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
-    let mut button_handler = InputButtonMapper::new(
+    let button_handler = InputButtonMapper::new(
         &mut a_button,
         &mut b_button,
         &mut start_button,
@@ -375,50 +406,12 @@ fn main() -> ! {
     );
     led_pin.set_high().unwrap();
 
+    display.clear(Rgb565::BLACK).unwrap();
     run_game_boy(gameboy, display, button_handler, timer);
     loop {
         crate::hal::arch::nop();
     }
-
-    // const MIDDLE_HEIGHT: u16 = (DISPLAY_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
-    // const MIDDLE_WIDTH: u16 = (DISPLAY_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
-    // let scaler: ScreenScaler<
-    //     144,
-    //     160,
-    //     { GAMEBOY_RENDER_WIDTH as usize },
-    //     { GAMEBOY_RENDER_HEIGHT as usize },
-    // > = ScreenScaler::new();
-    // let mut loop_counter: usize = 0;
-    // loop {
-    //     defmt::info!("Free Mem: {}", ALLOCATOR.free());
-    //     defmt::info!("Used Mem: {}", ALLOCATOR.used());
-
-    //     let start_time = timer.get_counter();
-
-    //     display
-    //         .set_pixels(
-    //             MIDDLE_HEIGHT,
-    //             MIDDLE_WIDTH,
-    //             (GAMEBOY_RENDER_HEIGHT - 1) as u16 + MIDDLE_HEIGHT,
-    //             (GAMEBOY_RENDER_WIDTH - 1) as u16 + MIDDLE_WIDTH,
-    //             scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
-    //         )
-    //         .unwrap();
-    //     let end_time: hal::fugit::Instant<u64, 1, 1000000> = timer.get_counter();
-    //     let diff: fugit::Duration<u64, 1, 1000000> = end_time - start_time;
-    //     let milliseconds = diff.to_millis();
-    //     defmt::info!(
-    //         "Loop: {}, Time elapsed: {}:{}",
-    //         loop_counter,
-    //         milliseconds / 1000,
-    //         milliseconds % 1000
-    //     );
-    //     loop_counter += 1;
-    // }
 }
-
-//impl<DI, M, RST> Display<DI, M, RST>
-// where
 
 #[inline(never)]
 pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>>(
@@ -431,23 +424,23 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
     M: Model<ColorFormat = Rgb565>,
     RST: OutputPin,
 {
-    const MIDDLE_HEIGHT: u16 = (DISPLAY_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
-    const MIDDLE_WIDTH: u16 = (DISPLAY_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
+    const MIDDLE_HEIGHT: u16 = (RENDER_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
+    const MIDDLE_WIDTH: u16 = (RENDER_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
     let scaler: ScreenScaler<
         144,
         160,
-        { GAMEBOY_RENDER_WIDTH as usize },
         { GAMEBOY_RENDER_HEIGHT as usize },
+        { GAMEBOY_RENDER_WIDTH as usize },
     > = ScreenScaler::new();
     let mut loop_counter: usize = 0;
     loop {
         let start_time = timer.get_counter();
         display
             .set_pixels(
-                MIDDLE_HEIGHT,
                 MIDDLE_WIDTH,
-                (GAMEBOY_RENDER_HEIGHT - 1) as u16 + MIDDLE_HEIGHT,
+                MIDDLE_HEIGHT,
                 (GAMEBOY_RENDER_WIDTH - 1) as u16 + MIDDLE_WIDTH,
+                (GAMEBOY_RENDER_HEIGHT - 1) as u16 + MIDDLE_HEIGHT,
                 scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
@@ -475,6 +468,9 @@ pub static PICOTOOL_ENTRIES: [hal::binary_info::EntryAddr; 5] = [
     hal::binary_info::rp_cargo_homepage_url!(),
     hal::binary_info::rp_program_build_attribute!(),
 ];
+
+#[cfg(feature = "flash_rom")]
+const ROM_FLASH_SIZE: usize = 1024 * 1024;
 
 #[cfg(feature = "flash_rom")]
 #[link_section = ".rodata"]
@@ -664,7 +660,7 @@ fn load_rom_to_psram<
 
     let mut loading_screen = LoadingScreen::new(
         Point::new(0, 0),
-        Size::new(DISPLAY_HEIGHT as u32, DISPLAY_WIDTH as u32),
+        Size::new(RENDER_WIDTH as u32, RENDER_HEIGHT as u32),
         rom_name.to_string(),
     );
     if let Err(_) = loading_screen.draw(display, 0) {};
@@ -686,8 +682,6 @@ fn load_rom_to_psram<
         if let Err(_) = loading_screen.update_progress(display, percent as u8) {};
     }
 
-    // rom_file.seek_from_start(0u32).unwrap();
-    // rom_file.read(ram).unwrap();
     rom_file.close().unwrap();
     root_dir.close().unwrap();
     volume.close().unwrap();
@@ -697,5 +691,3 @@ fn load_rom_to_psram<
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
     gb_rom.into_cartridge()
 }
-
-////////////////////

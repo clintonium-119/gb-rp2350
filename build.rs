@@ -3,7 +3,7 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use std::path::{self, PathBuf};
+use std::path::PathBuf;
 
 #[dotenvy::load]
 fn main() {
@@ -56,13 +56,35 @@ fn main() {
     );
     println!(
         "cargo:rustc-env=GAMEBOY_RENDER_WIDTH={}",
-        std::env::var("GAMEBOY_RENDER_WIDTH").expect("GAMEBOY_RENDER_WIDTH needs to be set")
+        std::env::var("GAMEBOY_RENDER_WIDTH").unwrap_or("160".to_string())
     );
     println!(
         "cargo:rustc-env=GAMEBOY_RENDER_HEIGHT={}",
-        std::env::var("GAMEBOY_RENDER_HEIGHT").expect("GAMEBOY_RENDER_HEIGHT needs to be set")
+        std::env::var("GAMEBOY_RENDER_HEIGHT").unwrap_or("144".to_string())
     );
 
+    // let display_orientation =
+    //     std::env::var("DISPLAY_ORIENTATION").unwrap_or("LANDSCAPE".to_string());
+    // let use_landscape = match display_orientation.as_str() {
+    //     "LANDSCAPE" => true,
+    //     "PORTRAIT" => false,
+    //     _ => panic!("DISPLAY_ORIENTATION has to be either LANDSCAPE or PORTRAIT"),
+    // };
+    // println!("cargo:rustc-env=USE_LANDSCAPE={}", use_landscape);
+
+    let display_orientation = std::env::var("DISPLAY_ROTATION").unwrap_or("0".to_string());
+    let rotation = match display_orientation.as_str() {
+        "0" => 0,
+        "90" => 90,
+        "180" => 180,
+        "270" => 270,
+        _ => panic!("DISPLAY_ROTATION has to be one of (0, 90, 180, 270)"),
+    };
+    println!("cargo:rustc-env=DISPLAY_ROTATION={}", rotation);
+    println!(
+        "cargo:rustc-env=DISPLAY_MIRRORED={}",
+        std::env::var("DISPLAY_MIRRORED").unwrap_or("false".to_string())
+    );
     load_pin_mapping();
     load_display_driver();
 
