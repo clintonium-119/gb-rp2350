@@ -43,7 +43,7 @@ Pending Features:
 * SD CS = GP13
 * SD CSK = GP14
 * SD MOSI = GP15
-* LCD CS = (GND)
+* LCD CS = GP4
 * LCD CLK = GP2
 * LCD SDI = GP3
 * LCD RS = GP7
