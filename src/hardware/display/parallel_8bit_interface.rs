@@ -1,6 +1,7 @@
 use crate::rp_hal::hal;
 
 use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
+use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
 use hal::dma::HalfWord;
 use hal::pio::{PIOExt, PIO};
@@ -9,18 +10,21 @@ use hal::pio::{Rx, UninitStateMachine};
 type Result = core::result::Result<(), DisplayError>;
 use hal::dma::Byte;
 use hal::dma::SingleChannel;
+use hal::timer::TimerDevice;
 
 use super::DmaStreamer;
-pub struct Parallel8BitDmaInterface<RS, P: PIOExt, SM: StateMachineIndex, CH1, CH2> {
+pub struct Parallel8BitDmaInterface<RS, P: PIOExt, SM: StateMachineIndex, CH1, CH2, TD: TimerDevice>
+{
     sm: StateMachine<(P, SM), Running>,
     tx: Option<Tx<(P, SM), HalfWord>>,
     rx: Rx<(P, SM)>,
     labels: PIOLabelDefines,
     rs: RS,
     streamer: DmaStreamer<CH1, CH2>,
+    timer: crate::hal::Timer<TD>,
 }
 
-impl<RS, P, SM, CH1, CH2> Parallel8BitDmaInterface<RS, P, SM, CH1, CH2>
+impl<RS, P, SM, CH1, CH2, TD: TimerDevice> Parallel8BitDmaInterface<RS, P, SM, CH1, CH2, TD>
 where
     P: PIOExt,
     SM: StateMachineIndex,
@@ -36,6 +40,7 @@ where
         rw: u8,
         pins: (u8, u8),
         streamer: DmaStreamer<CH1, CH2>,
+        timer: crate::hal::Timer<TD>,
     ) -> Self {
         let video_program = pio_proc::pio_asm!(
             ".side_set 1 opt",
@@ -83,6 +88,7 @@ where
             tx: Some(vid_tx.transfer_size(HalfWord)),
             labels: labels,
             streamer,
+            timer,
         }
     }
 
@@ -109,10 +115,9 @@ where
         self.sm.exec_instruction(instruction);
     }
 
-    fn wait_free(&mut self) {
-        while !self.tx.as_ref().unwrap().is_empty() {
-            crate::hal::arch::nop();
-        }
+    #[inline(always)]
+    pub fn is_idle(&mut self) -> bool {
+        self.tx.as_ref().unwrap().has_stalled()
     }
 
     #[allow(dead_code)]
@@ -187,7 +192,8 @@ where
     }
 }
 
-impl<RS, P, SM, CH1, CH2> WriteOnlyDataCommand for Parallel8BitDmaInterface<RS, P, SM, CH1, CH2>
+impl<RS, P, SM, CH1, CH2, TD: TimerDevice> WriteOnlyDataCommand
+    for Parallel8BitDmaInterface<RS, P, SM, CH1, CH2, TD>
 where
     P: PIOExt,
     SM: StateMachineIndex,
@@ -197,16 +203,22 @@ where
 {
     #[inline(always)]
     fn send_commands(&mut self, cmd: display_interface::DataFormat<'_>) -> Result {
-        //    self.wait_free();
+        while !self.is_idle() {
+            crate::hal::arch::nop();
+        }
         self.rs.set_low().map_err(|_| DisplayError::RSError)?;
+        self.timer.delay_ns(9000);
         self.send_data(cmd)?;
         Ok(())
     }
 
     #[inline(always)]
     fn send_data(&mut self, buf: display_interface::DataFormat<'_>) -> Result {
-        //      self.wait_free();
+        while !self.is_idle() {
+            crate::hal::arch::nop();
+        }
         self.rs.set_high().map_err(|_| DisplayError::RSError)?;
+        self.timer.delay_ns(9000);
         self.send_data(buf)?;
         Ok(())
     }

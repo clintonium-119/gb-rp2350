@@ -636,6 +636,7 @@ fn load_rom_to_psram<
     rom_name: &str,
     ram: &'static mut [u8],
 ) -> Box<dyn Cartridge + 'a> {
+    pub const ROM_READ_BUFFER_SIZE: u32 = 4096 * 4;
     let mut volume = volume_manager
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
@@ -650,13 +651,13 @@ fn load_rom_to_psram<
             rom_file.length()
         )
     }
-    let mut offsets = rom_file.length() / FLASH_SECTOR_SIZE;
-    if rom_file.length() % FLASH_SECTOR_SIZE != 0 {
+    let mut offsets = rom_file.length() / ROM_READ_BUFFER_SIZE;
+    if rom_file.length() % ROM_READ_BUFFER_SIZE != 0 {
         offsets += 1;
     }
     defmt::info!("Loading rom into psram");
 
-    let mut buffer = [0u8; FLASH_SECTOR_SIZE as usize];
+    let mut buffer = [0u8; ROM_READ_BUFFER_SIZE as usize];
 
     let mut loading_screen = LoadingScreen::new(
         Point::new(0, 0),
@@ -668,11 +669,11 @@ fn load_rom_to_psram<
     rom_file.seek_from_start(0u32).unwrap();
     for x in 0..offsets {
         defmt::info!("Loading rom into flash for offset: {}", x);
-        rom_file.seek_from_start(x * FLASH_SECTOR_SIZE).unwrap();
+        rom_file.seek_from_start(x * ROM_READ_BUFFER_SIZE).unwrap();
         rom_file.read(&mut buffer).unwrap();
         // let write_result = unsafe { FLASH_ROM_DATA.write_flash(x, &mut buffer) };
-        let addr = FLASH_SECTOR_SIZE * x;
-        ram[addr as usize..addr as usize + FLASH_SECTOR_SIZE as usize].copy_from_slice(&buffer);
+        let addr = ROM_READ_BUFFER_SIZE * x;
+        ram[addr as usize..addr as usize + ROM_READ_BUFFER_SIZE as usize].copy_from_slice(&buffer);
         let percent = (x as f32 / offsets as f32) * 100f32;
         defmt::info!(
             "Result from write into flash for offset: {}, percent: {}",
