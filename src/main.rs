@@ -293,10 +293,10 @@ fn main() -> ! {
 
     let screen_data_command_pin = pin_select!(pins, env!("PIN_SCREEN_DC")).into_push_pull_output();
     let display_reset = pin_select!(pins, env!("PIN_SCREEN_RESET")).into_push_pull_output();
-    let spi_sclk: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pin_select!(pins, 2).into_function::<hal::gpio::FunctionPio0>();
-    let spi_mosi: hal::gpio::Pin<_, _, hal::gpio::PullDown> =
-        pin_select!(pins, 3).into_function::<hal::gpio::FunctionPio0>();
+    let spi_sclk =
+        pin_select!(pins, env!("PIN_SCREEN_SCLK")).into_function::<hal::gpio::FunctionPio0>();
+    let spi_mosi =
+        pin_select!(pins, env!("PIN_SCREEN_MOSI")).into_function::<hal::gpio::FunctionPio0>();
 
     let streamer = hardware::display::DmaStreamer::new(dma.ch0, dma.ch1, display_buffer);
     let display_interface = hardware::display::SpiPioDmaInterface::new(
@@ -668,7 +668,7 @@ fn load_rom_to_psram<
 
     rom_file.seek_from_start(0u32).unwrap();
     for x in 0..offsets {
-        defmt::info!("Loading rom into flash for offset: {}", x);
+        defmt::info!("Loading rom into psram for offset: {}", x);
         rom_file.seek_from_start(x * ROM_READ_BUFFER_SIZE).unwrap();
         rom_file.read(&mut buffer).unwrap();
         // let write_result = unsafe { FLASH_ROM_DATA.write_flash(x, &mut buffer) };
@@ -676,7 +676,7 @@ fn load_rom_to_psram<
         ram[addr as usize..addr as usize + ROM_READ_BUFFER_SIZE as usize].copy_from_slice(&buffer);
         let percent = (x as f32 / offsets as f32) * 100f32;
         defmt::info!(
-            "Result from write into flash for offset: {}, percent: {}",
+            "Result from write into psram for offset: {}, percent: {}",
             x,
             percent
         );
