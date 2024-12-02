@@ -290,6 +290,8 @@ fn main() -> ! {
     cortex_m::singleton!(: [u16;(GAMEBOY_RENDER_WIDTH as usize) * 3]  = [0u16; (GAMEBOY_RENDER_WIDTH as usize ) * 3 ])
         .unwrap()
         .as_mut_slice();
+    let mut screen_data_cs = pin_select!(pins, env!("PIN_SCREEN_CS")).into_push_pull_output();
+    screen_data_cs.set_low().unwrap();
 
     let screen_data_command_pin = pin_select!(pins, env!("PIN_SCREEN_DC")).into_push_pull_output();
     let display_reset = pin_select!(pins, env!("PIN_SCREEN_RESET")).into_push_pull_output();
