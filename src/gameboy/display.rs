@@ -7,6 +7,9 @@ use gb_core::hardware::Screen;
 
 const NANOS_IN_VSYNC: u64 = ((1.0 / 60.0) * 1000000000.0) as u64;
 
+#[const_env::from_env]
+const FRAME_RATE: u8 = 30;
+
 pub struct GameboyLineBufferDisplay<D: TimerDevice> {
     pub line_buffer: Box<[Rgb565; 160]>,
     pub line_complete: bool,
@@ -53,13 +56,13 @@ impl<D: TimerDevice> Screen for GameboyLineBufferDisplay<D> {
         let diff = current_time - self.time_counter;
         let nano_seconds = diff.to_nanos();
         if NANOS_IN_VSYNC > nano_seconds {
-            let time_delay = NANOS_IN_VSYNC.saturating_sub(nano_seconds) as u32;
+            //let time_delay = NANOS_IN_VSYNC.saturating_sub(nano_seconds) as u32;
             //self.delay.delay_ns(time_delay);
         }
         self.time_counter = self.delay.get_counter();
     }
 
     fn frame_rate(&self) -> u8 {
-        30
+        FRAME_RATE
     }
 }

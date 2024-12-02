@@ -63,14 +63,10 @@ fn main() {
         std::env::var("GAMEBOY_RENDER_HEIGHT").unwrap_or("144".to_string())
     );
 
-    // let display_orientation =
-    //     std::env::var("DISPLAY_ORIENTATION").unwrap_or("LANDSCAPE".to_string());
-    // let use_landscape = match display_orientation.as_str() {
-    //     "LANDSCAPE" => true,
-    //     "PORTRAIT" => false,
-    //     _ => panic!("DISPLAY_ORIENTATION has to be either LANDSCAPE or PORTRAIT"),
-    // };
-    // println!("cargo:rustc-env=USE_LANDSCAPE={}", use_landscape);
+    println!(
+        "cargo:rustc-env=FRAME_RATE={}",
+        std::env::var("FRAME_RATE").unwrap_or("30".to_string())
+    );
 
     let display_orientation = std::env::var("DISPLAY_ROTATION").unwrap_or("0".to_string());
     let rotation = match display_orientation.as_str() {

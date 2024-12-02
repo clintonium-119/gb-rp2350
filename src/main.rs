@@ -427,7 +427,7 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
     const MIDDLE_HEIGHT: u16 = (RENDER_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
     const MIDDLE_WIDTH: u16 = (RENDER_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
     let scaler: ScreenScaler<
-        144,
+        { 144 - 1 },
         160,
         { GAMEBOY_RENDER_HEIGHT as usize },
         { GAMEBOY_RENDER_WIDTH as usize },
