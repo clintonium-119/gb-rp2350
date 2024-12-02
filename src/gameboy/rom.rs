@@ -8,6 +8,7 @@ use alloc::{
 };
 use const_lru::ConstLru;
 use defmt::{debug, info};
+use embedded_hal::delay::DelayNs;
 use embedded_sdmmc::{RawFile, RawVolume};
 
 pub struct SdRomManager<
@@ -144,6 +145,7 @@ impl<
     }
 
     fn save(&mut self, game_title: &str, bank_index: u8, bank: &[u8]) {
+        self.timer.borrow_mut().delay_ms(10);
         let mut volume_manager = self.volume_manager.borrow_mut();
         let mut volume = self
             .raw_volume
@@ -187,6 +189,7 @@ impl<
 
     fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
         info!("Loading ram bank: {}", bank_index);
+        self.timer.borrow_mut().delay_ms(10);
         let mut volume_manager = self.volume_manager.borrow_mut();
         let mut volume = self
             .raw_volume

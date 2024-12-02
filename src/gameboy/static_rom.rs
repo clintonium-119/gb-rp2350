@@ -49,6 +49,7 @@ impl<
         bank: &[u8],
     ) -> Result<(), embedded_sdmmc::Error<D::Error>> {
         info!("Saving ram bank: {}", bank_index);
+        self.timer.delay_ms(10);
         let mut volume_manager = self.volume_manager.borrow_mut();
         let mut volume = volume_manager.open_volume(embedded_sdmmc::VolumeIdx(0))?;
         let mut root_directory = volume.open_root_dir()?;
@@ -119,6 +120,7 @@ impl<
 
     fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
         info!("Loading ram bank: {}", bank_index);
+        self.timer.delay_ms(10);
         let mut volume_manager = self.volume_manager.borrow_mut();
 
         let mut volume = volume_manager
