@@ -27,7 +27,6 @@ use ui::rom_select::select_rom;
 use embedded_sdmmc::sdcard::AcquireOpts;
 use gb_core::hardware::boot_rom::Bootrom;
 use gb_core::hardware::cartridge::Cartridge;
-use hardware::flash::FLASH_SECTOR_SIZE;
 use mipidsi::models::Model;
 use mipidsi::options::{Orientation, Rotation};
 use mipidsi::Display;
@@ -504,6 +503,7 @@ fn load_rom<
     timer: crate::hal::Timer<DT>,
     device_reset: DR,
 ) -> Box<dyn Cartridge + 'a> {
+    use hardware::flash::FLASH_SECTOR_SIZE;
     device_reset(volume_manager.device());
     let mut volume = volume_manager
         .open_volume(embedded_sdmmc::VolumeIdx(0))
