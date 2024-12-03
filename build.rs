@@ -97,15 +97,16 @@ fn load_pin_mapping() {
         .load()
         .unwrap();
 
-    let custom_map = option_env!("CUSTOM_PIN_MAP");
-    if custom_map.is_some() {
-        println!("cargo:rerun-if-changed={}", custom_map.unwrap());
-        let custom_mapping_env = dotenvy::EnvLoader::with_path(custom_map.unwrap())
-            .load()
-            .unwrap();
-        for (key, value) in custom_mapping_env {
-            env_map.insert(key, value);
+    let custom_map_opt = std::env::var("CUSTOM_PIN_MAP").ok();
+    match custom_map_opt {
+        Some(custom_map) => {
+            println!("cargo:rerun-if-changed={}", custom_map);
+            let custom_mapping_env = dotenvy::EnvLoader::with_path(custom_map).load().unwrap();
+            for (key, value) in custom_mapping_env {
+                env_map.insert(key, value);
+            }
         }
+        None => {}
     }
 
     for (key, value) in env_map {
