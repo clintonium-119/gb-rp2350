@@ -476,8 +476,8 @@ const ROM_FLASH_SIZE: usize = 1024 * 1024;
 
 #[cfg(feature = "flash_rom")]
 #[link_section = ".rodata"]
-static FLASH_ROM_DATA: FlashBlock<ROM_FLASH_SIZE> = FlashBlock {
-    data: UnsafeCell::new([0x55u8; ROM_FLASH_SIZE]),
+static FLASH_ROM_DATA: hardware::flash::FlashBlock<ROM_FLASH_SIZE> = hardware::flash::FlashBlock {
+    data: core::cell::UnsafeCell::new([0x55u8; ROM_FLASH_SIZE]),
 };
 
 #[inline(never)]
