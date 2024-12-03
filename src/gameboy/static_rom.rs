@@ -9,35 +9,39 @@ pub struct StaticRomManager<
     D: embedded_sdmmc::BlockDevice,
     T: embedded_sdmmc::TimeSource,
     DT: TimerDevice,
+    DR: Fn(&mut D),
     const MAX_DIRS: usize,
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
 > {
     volume_manager: RefCell<embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>>,
-
     rom: &'static [u8],
     start_time: Instant,
     timer: crate::hal::Timer<DT>,
+    device_reset: DR,
 }
 impl<
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
+        DR: Fn(&mut D),
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
-    > StaticRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    > StaticRomManager<D, T, DT, DR, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     pub fn new(
         rom: &'static [u8],
         volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
         timer: crate::hal::Timer<DT>,
+        device_reset: DR,
     ) -> Self {
-        let result: StaticRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
+        let result: StaticRomManager<D, T, DT, DR, MAX_DIRS, MAX_FILES, MAX_VOLUMES> = Self {
             rom,
             volume_manager: RefCell::new(volume_manager),
             start_time: timer.get_counter(),
             timer,
+            device_reset,
         };
 
         result
@@ -50,7 +54,10 @@ impl<
     ) -> Result<(), embedded_sdmmc::Error<D::Error>> {
         info!("Saving ram bank: {}", bank_index);
         self.timer.delay_ms(10);
+
         let mut volume_manager = self.volume_manager.borrow_mut();
+        (self.device_reset)(volume_manager.device());
+
         let mut volume = volume_manager.open_volume(embedded_sdmmc::VolumeIdx(0))?;
         let mut root_directory = volume.open_root_dir()?;
 
@@ -82,11 +89,12 @@ impl<
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
+        DR: Fn(&mut D),
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
     > gb_core::hardware::rom::RomManager
-    for StaticRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    for StaticRomManager<D, T, DT, DR, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     #[inline(always)]
     fn read_from_offset(&self, seek_offset: usize, index: usize, _bank_number: u8) -> u8 {
@@ -102,7 +110,7 @@ impl<
 
     fn save(&mut self, game_title: &str, bank_index: u8, bank: &[u8]) {
         let mut result = None;
-        for _i in 0..15 {
+        for _i in 0..5 {
             let inner_result = self.save_internal(game_title, bank_index, bank);
             if inner_result.is_ok() {
                 result = Some(inner_result.unwrap());
@@ -110,18 +118,21 @@ impl<
             }
             let error = inner_result.err().take().unwrap();
             warn!(
-                "Failed to read rom, retrying, {}",
+                "Failed to save ram, retrying, {}",
                 defmt::Debug2Format(&error)
             );
             self.timer.delay_ms(200);
         }
-        result.unwrap();
+        if result.is_none() {
+            defmt::error!("Failed to save ram state!");
+        }
     }
 
     fn load_to_bank(&mut self, game_title: &str, bank_index: u8, bank: &mut [u8]) {
         info!("Loading ram bank: {}", bank_index);
         self.timer.delay_ms(10);
         let mut volume_manager = self.volume_manager.borrow_mut();
+        (self.device_reset)(volume_manager.device());
 
         let mut volume = volume_manager
             .open_volume(embedded_sdmmc::VolumeIdx(0))
@@ -163,10 +174,11 @@ impl<
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
+        DR: Fn(&mut D),
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
-    > core::ops::Index<usize> for StaticRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    > core::ops::Index<usize> for StaticRomManager<D, T, DT, DR, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     type Output = u8;
 
@@ -178,11 +190,12 @@ impl<
         D: embedded_sdmmc::BlockDevice,
         T: embedded_sdmmc::TimeSource,
         DT: TimerDevice,
+        DR: Fn(&mut D),
         const MAX_DIRS: usize,
         const MAX_FILES: usize,
         const MAX_VOLUMES: usize,
     > core::ops::Index<core::ops::Range<usize>>
-    for StaticRomManager<D, T, DT, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+    for StaticRomManager<D, T, DT, DR, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     type Output = [u8];
 

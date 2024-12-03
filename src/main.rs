@@ -388,11 +388,16 @@ fn main() -> ! {
                 alloc::slice::from_raw_parts_mut(ptr, psram_size as usize);
             slice
         };
-        let cartridge = load_rom_to_psram(&mut display, volume_mgr, timer, &name, psram);
+
+        let cartridge = load_rom_to_psram(&mut display, volume_mgr, timer, &name, psram, |db| {
+            db.mark_card_uninit();
+        });
         cartridge
     };
     #[cfg(not(feature = "psram_rom"))]
-    let cartridge = load_rom(&mut display, volume_mgr, &name, timer);
+    let cartridge = load_rom(&mut display, volume_mgr, &name, timer, |bd| {
+        bd.mark_card_uninit();
+    });
 
     let gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
 
@@ -488,6 +493,7 @@ fn load_rom<
     D: embedded_sdmmc::BlockDevice + 'a,
     T: embedded_sdmmc::TimeSource + 'a,
     DT: TimerDevice + 'a,
+    DR: Fn(&mut D) + 'a,
     const MAX_DIRS: usize,
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
@@ -496,7 +502,9 @@ fn load_rom<
     mut volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     rom_name: &str,
     timer: crate::hal::Timer<DT>,
+    device_reset: DR,
 ) -> Box<dyn Cartridge + 'a> {
+    device_reset(volume_manager.device());
     let mut volume = volume_manager
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
@@ -546,8 +554,12 @@ fn load_rom<
     volume.close().unwrap();
     defmt::info!("Loading complete");
 
-    let rom_manager =
-        gameboy::static_rom::StaticRomManager::new(FLASH_ROM_DATA.read(), volume_manager, timer);
+    let rom_manager = gameboy::static_rom::StaticRomManager::new(
+        FLASH_ROM_DATA.read(),
+        volume_manager,
+        timer,
+        device_reset,
+    );
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
     gb_rom.into_cartridge()
 }
@@ -560,6 +572,7 @@ fn load_rom<
     D: embedded_sdmmc::BlockDevice + 'a,
     T: embedded_sdmmc::TimeSource + 'a,
     DT: TimerDevice + 'a,
+    DR: Fn(&mut D) + 'a,
     const MAX_DIRS: usize,
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
@@ -568,6 +581,7 @@ fn load_rom<
     volume_manager: embedded_sdmmc::VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     rom_name: &str,
     timer: crate::hal::Timer<DT>,
+    device_reset: DR,
 ) -> Box<dyn Cartridge + 'a> {
     defmt::info!("Loading from SDCARD");
     #[const_env::from_env]
@@ -580,7 +594,7 @@ fn load_rom<
         MAX_DIRS,
         MAX_FILES,
         MAX_VOLUMES,
-    > = gameboy::rom::SdRomManager::new(rom_name, volume_manager, timer);
+    > = gameboy::rom::SdRomManager::new(rom_name, volume_manager, timer, device_reset);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
     gb_rom.into_cartridge()
 }
@@ -628,6 +642,7 @@ fn load_rom_to_psram<
     D: embedded_sdmmc::BlockDevice + 'a,
     T: embedded_sdmmc::TimeSource + 'a,
     DT: TimerDevice + 'a,
+    DR: Fn(&mut D) + 'a,
     const MAX_DIRS: usize,
     const MAX_FILES: usize,
     const MAX_VOLUMES: usize,
@@ -637,8 +652,10 @@ fn load_rom_to_psram<
     timer: crate::hal::Timer<DT>,
     rom_name: &str,
     ram: &'static mut [u8],
+    device_reset: DR,
 ) -> Box<dyn Cartridge + 'a> {
     pub const ROM_READ_BUFFER_SIZE: u32 = 4096 * 4;
+    device_reset(volume_manager.device());
     let mut volume = volume_manager
         .open_volume(embedded_sdmmc::VolumeIdx(0))
         .unwrap();
@@ -690,7 +707,8 @@ fn load_rom_to_psram<
     volume.close().unwrap();
     defmt::info!("Loading complete");
 
-    let rom_manager = gameboy::static_rom::StaticRomManager::new(ram, volume_manager, timer);
+    let rom_manager =
+        gameboy::static_rom::StaticRomManager::new(ram, volume_manager, timer, device_reset);
     let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
     gb_rom.into_cartridge()
 }
