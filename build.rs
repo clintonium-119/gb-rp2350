@@ -81,6 +81,10 @@ fn main() {
         "cargo:rustc-env=DISPLAY_MIRRORED={}",
         std::env::var("DISPLAY_MIRRORED").unwrap_or("false".to_string())
     );
+    println!(
+        "cargo:rustc-env=DISPLAY_COLOR_INVERT={}",
+        std::env::var("DISPLAY_COLOR_INVERT").unwrap_or("false".to_string())
+    );
     load_pin_mapping();
     load_display_driver();
 

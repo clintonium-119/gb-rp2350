@@ -95,12 +95,12 @@ const DISPLAY_HEIGHT: u16 = 320;
 const GAMEBOY_RENDER_WIDTH: u16 = 320;
 #[const_env::from_env]
 const GAMEBOY_RENDER_HEIGHT: u16 = 240;
-
 #[const_env::from_env]
 const DISPLAY_ROTATION: u16 = 0;
-
 #[const_env::from_env]
 const DISPLAY_MIRRORED: bool = false;
+#[const_env::from_env]
+const DISPLAY_COLOR_INVERT: bool = false;
 
 const RENDER_WIDTH: u16 = if DISPLAY_ROTATION == 90 || DISPLAY_ROTATION == 270 {
     DISPLAY_HEIGHT
@@ -311,11 +311,16 @@ fn main() -> ! {
         streamer,
         timer,
     );
-
-    let display_builder = mipidsi::Builder::new(DisplayDriver, display_interface)
+    let ddrivere = crate::hardware::display::ILI9488Rgb565;
+    let display_builder = mipidsi::Builder::new(ddrivere, display_interface)
         .reset_pin(display_reset)
         .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
         .color_order(mipidsi::options::ColorOrder::Bgr)
+        .invert_colors(if DISPLAY_COLOR_INVERT {
+            mipidsi::options::ColorInversion::Inverted
+        } else {
+            mipidsi::options::ColorInversion::Normal
+        })
         .orientation(Orientation {
             rotation: match DISPLAY_ROTATION {
                 0 => Rotation::Deg0,
