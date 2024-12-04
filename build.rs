@@ -101,7 +101,15 @@ fn load_pin_mapping() {
     match custom_map_opt {
         Some(custom_map) => {
             println!("cargo:rerun-if-changed={}", custom_map);
-            let custom_mapping_env = dotenvy::EnvLoader::with_path(custom_map).load().unwrap();
+            let custom_mapping_env = dotenvy::EnvLoader::with_path(custom_map.as_str())
+                .load()
+                .expect(
+                    format!(
+                        "Cutom pin mapping defined but could not be found at path: \"{}\"",
+                        custom_map.as_str()
+                    )
+                    .as_str(),
+                );
             for (key, value) in custom_mapping_env {
                 env_map.insert(key, value);
             }
