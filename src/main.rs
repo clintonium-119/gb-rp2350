@@ -311,8 +311,8 @@ fn main() -> ! {
         streamer,
         timer,
     );
-    let ddrivere = crate::hardware::display::ILI9488Rgb565;
-    let display_builder = mipidsi::Builder::new(ddrivere, display_interface)
+
+    let display_builder = mipidsi::Builder::new(DisplayDriver, display_interface)
         .reset_pin(display_reset)
         .display_size(DISPLAY_WIDTH as u16, DISPLAY_HEIGHT as u16)
         .color_order(mipidsi::options::ColorOrder::Bgr)
