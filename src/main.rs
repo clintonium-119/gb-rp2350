@@ -595,6 +595,7 @@ fn load_rom<
         D,
         T,
         DT,
+        DR,
         ROM_CACHE_SIZE,
         MAX_DIRS,
         MAX_FILES,

@@ -52,7 +52,7 @@ fugit = "0.3.6"
 
 pio = "0.2.0"
 pio-proc = "0.2.0"
-rp235x-hal = { git = "https://github.com/Altaflux/rp-hal.git", branch = "xip_cs1", features = [
+rp235x-hal = { git = "https://github.com/rp-rs/rp-hal.git", rev = "e78fa4c0661910f71e0eb5f4a370f20b1ed2cacb", features = [
     "binary-info",
     "critical-section-impl",
     "rt",

@@ -64,7 +64,8 @@ Take a look at the `pin_mapping.env` file for a reference of all pin names.
 3. Push and hold the BOOTSEL button on the Pico, then connect to your computer using a micro USB cable. Release BOOTSEL once the drive RPI-RP2 appears on your computer.
 4. Set up the `.env` file to set the ROM and display configurations. Use `.env.example` as your reference.
 5. Build the gameboy emulator using `cargo build --release`.
-6. Drag and drop the UF2 file on to the RPI-RP2 drive. The Raspberry Pi Pico will reboot and will now run the emulator. The location of the UF2 should be `target/thumbv8m.main-none-eabihf/release/gb-rp2350`.
+6. Convert the `elf` binaries into into `uf2`: `picotool uf2 convert .\target\thumbv8m.main-none-eabihf\release\gb-rp2350 -t elf gb-rp2350.uf2`
+7. Drag and drop the UF2 file (`gb-rp2350.uf2`) on to the RPI-RP2 drive. The Raspberry Pi Pico will reboot and will now run the emulator.
 
 # Rom Loading Modes
 The emulator supports 3 different ways to load roms:
