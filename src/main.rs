@@ -56,6 +56,8 @@ use embedded_alloc::LlffHeap as Heap;
 //Include selected display driver
 include!(concat!(env!("OUT_DIR"), "/generated_display_driver.rs"));
 
+use mipidsi::interface::InterfacePixelFormat;
+
 /// Tell the Boot ROM about our application
 #[link_section = ".start_block"]
 #[used]
@@ -431,9 +433,10 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
     mut button_handler: BH,
     timer: crate::hal::Timer<D>,
 ) where
-    DI: WriteOnlyDataCommand,
+    DI: mipidsi::interface::Interface,
     M: Model<ColorFormat = Rgb565>,
     RST: OutputPin,
+    M::ColorFormat: InterfacePixelFormat<<DI as mipidsi::interface::Interface>::Word>,
 {
     const MIDDLE_HEIGHT: u16 = (RENDER_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
     const MIDDLE_WIDTH: u16 = (RENDER_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;

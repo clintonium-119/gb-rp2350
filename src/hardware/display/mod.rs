@@ -4,8 +4,8 @@ mod parallel_8bit_interface;
 mod scaler;
 mod spi_pio_interface;
 
-mod ili9488;
-pub use ili9488::ILI9488Rgb565;
+// mod ili9488;
+// pub use ili9488::ILI9488Rgb565; // TODO: uncomment this line to use the ILI9488 display driver
 
 pub use dma_streamer::DmaStreamer;
 use dma_transfer::DmaTransfer;

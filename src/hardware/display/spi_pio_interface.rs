@@ -293,3 +293,36 @@ where
         Ok(())
     }
 }
+
+impl<RS, P, SM1, SM2, CH1: SingleChannel, CH2: SingleChannel, TD: TimerDevice> mipidsi::interface::Interface for SpiPioDmaInterface<RS, P, SM1, SM2, CH1, CH2, TD>
+where
+    P: PIOExt,
+    SM1: StateMachineIndex,
+    SM2: StateMachineIndex,
+    RS: OutputPin,
+{
+    type Word = u16;
+    type Error = display_interface::DisplayError;
+
+    fn send_command(&mut self, command: u8, params: &[u8]) -> core::result::Result<(), Self::Error> {
+        self.send_commands(display_interface::DataFormat::U8(&[command]))?;
+        if !params.is_empty() {
+            self.send_data(display_interface::DataFormat::U8(params))?;
+        }
+        Ok(())
+    }
+
+    fn send_pixels<const N: usize>(&mut self, pixels: impl IntoIterator<Item = [Self::Word; N]>) -> core::result::Result<(), Self::Error> {
+        for chunk in pixels {
+            self.send_data(display_interface::DataFormat::U16(&chunk))?;
+        }
+        Ok(())
+    }
+
+    fn send_repeated_pixel<const N: usize>(&mut self, word: [Self::Word; N], times: u32) -> core::result::Result<(), Self::Error> {
+        for _ in 0..times {
+            self.send_data(display_interface::DataFormat::U16(&word))?;
+        }
+        Ok(())
+    }
+}
