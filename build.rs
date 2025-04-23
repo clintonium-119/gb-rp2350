@@ -62,6 +62,14 @@ fn main() {
         "cargo:rustc-env=GAMEBOY_RENDER_HEIGHT={}",
         std::env::var("GAMEBOY_RENDER_HEIGHT").unwrap_or("144".to_string())
     );
+    println!(
+        "cargo:rustc-env=RENDER_HORIZONTAL_POSITION={}",
+        std::env::var("RENDER_HORIZONTAL_POSITION").unwrap_or("-1".to_string())
+    );
+    println!(
+        "cargo:rustc-env=RENDER_VERTICAL_POSITION={}",
+        std::env::var("RENDER_VERTICAL_POSITION").unwrap_or("-1".to_string())
+    );
 
     println!(
         "cargo:rustc-env=FRAME_RATE={}",

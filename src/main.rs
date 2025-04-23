@@ -103,14 +103,32 @@ const DISPLAY_MIRRORED: bool = false;
 const DISPLAY_COLOR_INVERT: bool = false;
 
 const RENDER_WIDTH: u16 = if DISPLAY_ROTATION == 90 || DISPLAY_ROTATION == 270 {
-    DISPLAY_HEIGHT
+    GAMEBOY_RENDER_WIDTH
 } else {
-    DISPLAY_WIDTH
+    GAMEBOY_RENDER_HEIGHT
 };
 const RENDER_HEIGHT: u16 = if DISPLAY_ROTATION == 90 || DISPLAY_ROTATION == 270 {
-    DISPLAY_WIDTH
+    GAMEBOY_RENDER_HEIGHT
 } else {
-    DISPLAY_HEIGHT
+    GAMEBOY_RENDER_WIDTH
+};
+
+#[const_env::from_env]
+const RENDER_HORIZONTAL_POSITION: i16 = -1;
+
+#[const_env::from_env]
+const RENDER_VERTICAL_POSITION: i16 = -1;
+
+const RENDER_LEFT_PADDING: u16 = if RENDER_HORIZONTAL_POSITION >= 0 {
+    RENDER_HORIZONTAL_POSITION as u16
+} else {
+    (DISPLAY_HEIGHT - GAMEBOY_RENDER_WIDTH) / 2
+};
+
+const RENDER_TOP_PADDING: u16 = if RENDER_VERTICAL_POSITION >= 0 {
+    RENDER_VERTICAL_POSITION as u16
+} else {
+    (DISPLAY_WIDTH - GAMEBOY_RENDER_HEIGHT) / 2
 };
 
 #[hal::entry]
@@ -435,8 +453,6 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
     M: Model<ColorFormat = Rgb565>,
     RST: OutputPin,
 {
-    const MIDDLE_HEIGHT: u16 = (RENDER_HEIGHT - GAMEBOY_RENDER_HEIGHT) / 2;
-    const MIDDLE_WIDTH: u16 = (RENDER_WIDTH - GAMEBOY_RENDER_WIDTH) / 2;
     let scaler: ScreenScaler<
         { 144 - 1 },
         160,
@@ -448,10 +464,10 @@ pub fn run_game_boy<'a, D: TimerDevice, DI, M, RST, BH: GameboyButtonHandler<'a>
         let start_time = timer.get_counter();
         display
             .set_pixels(
-                MIDDLE_WIDTH,
-                MIDDLE_HEIGHT,
-                (GAMEBOY_RENDER_WIDTH - 1) as u16 + MIDDLE_WIDTH,
-                (GAMEBOY_RENDER_HEIGHT - 1) as u16 + MIDDLE_HEIGHT,
+                RENDER_LEFT_PADDING,
+                RENDER_TOP_PADDING,
+                (GAMEBOY_RENDER_WIDTH - 1) as u16 + RENDER_LEFT_PADDING,
+                (GAMEBOY_RENDER_HEIGHT - 1) as u16 + RENDER_TOP_PADDING,
                 scaler.scale_iterator(GameEmulationHandler::new(&mut gameboy, &mut button_handler)),
             )
             .unwrap();
