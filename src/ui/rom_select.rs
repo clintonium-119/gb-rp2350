@@ -16,18 +16,24 @@ use crate::{util::LimitedViewList, RENDER_HEIGHT, RENDER_WIDTH, RENDER_LEFT_PADD
 use super::ListDisplay;
 
 #[inline(always)]
-pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
+pub fn select_rom<D, B, S>(
     display: &mut D,
     rom_list: &[String],
-    mut _timer: crate::hal::Timer<TD>,
-    up_button: &'a mut dyn InputPin<Error = Infallible>,
-    down_button: &'a mut dyn InputPin<Error = Infallible>,
-    select_button: &'a mut dyn InputPin<Error = Infallible>,
-) -> Result<usize, D::Error> {
+    timer: crate::hal::Timer<S>,
+    up_button: &mut B,
+    down_button: &mut B,
+    a_button: &mut B,
+    start_button: &mut B,
+) -> Option<usize>
+where
+    D: DrawTarget<Color = Rgb565>,
+    B: InputPin<Error = Infallible>,
+    S: TimerDevice,
+{
     let mut selected_rom = 0u8;
     let mut button_clicked = false;
 
-    display.clear(Rgb565::CSS_GRAY)?;
+    display.clear(Rgb565::CSS_GRAY).ok()?;
 
     let title_style = MonoTextStyleBuilder::new()
         .font(&FONT_6X12)
@@ -40,7 +46,8 @@ pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
         title_style,
         Baseline::Middle,
     )
-    .draw(display)?;
+    .draw(display)
+    .ok()?;
 
     let list = ListDisplay::new(
         Point::new(RENDER_LEFT_PADDING as i32, RENDER_TOP_PADDING as i32 + 20),   // Starting position
@@ -50,16 +57,16 @@ pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
     );
     let max_items_to_display = ((RENDER_HEIGHT / (20 + 5)) as usize) - 1;
     let mut items = LimitedViewList::new(rom_list, max_items_to_display);
-    list.draw(items.iter(), 0, display)?;
+    list.draw(items.iter(), 0, display).ok()?;
     loop {
         if up_button.is_low().unwrap() && !button_clicked {
             if selected_rom != 0 {
                 selected_rom = selected_rom - 1;
                 defmt::info!("up_button Start redraw: {}", selected_rom);
-                list.draw(items.iter(), selected_rom, display)?;
+                list.draw(items.iter(), selected_rom, display).ok()?;
             } else {
                 items.prev();
-                list.draw(items.iter(), selected_rom, display)?;
+                list.draw(items.iter(), selected_rom, display).ok()?;
             }
             button_clicked = true;
         }
@@ -67,15 +74,18 @@ pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
             if selected_rom + 1 < items.max() as u8 {
                 selected_rom = selected_rom + 1;
                 defmt::info!("down_button Start redraw: {}", selected_rom);
-                list.draw(items.iter(), selected_rom, display)?;
+                list.draw(items.iter(), selected_rom, display).ok()?;
             } else if (items.len() - items.current_cursor()) > items.max() {
                 items.next();
-                list.draw(items.iter(), selected_rom, display)?;
+                list.draw(items.iter(), selected_rom, display).ok()?;
             }
             button_clicked = true;
         }
-        if select_button.is_low().unwrap() {
-            return Ok(items.current_cursor() + selected_rom as usize);
+        if a_button.is_low().unwrap() {
+            return Some(items.current_cursor() + selected_rom as usize);
+        }
+        if start_button.is_low().unwrap() {
+            return None;
         }
 
         if down_button.is_high().unwrap() && up_button.is_high().unwrap() {
