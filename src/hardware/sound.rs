@@ -27,6 +27,7 @@ pub struct I2sPioInterface<CH1: SingleChannel, CH2: SingleChannel, P: PIOExt, SM
     dma_state: Option<DmaState<CH1, CH2, LimitingArrayReadTarget, P, SM>>,
     second_buffer: Option<LimitingArrayReadTarget>,
     sample_rate: u32,
+    volume: u8, // 0 = mute, 255 = max
 }
 
 impl<CH1, CH2, P, SM> I2sPioInterface<CH1, CH2, P, SM>
@@ -93,15 +94,24 @@ where
             dma_state: Some(DmaState::IDLE(cfg)),
             second_buffer: Some(from2),
             sample_rate: sample_rate,
+            volume: 1, // 255 is max volume
         }
+    }
+
+    pub fn set_volume(&mut self, volume: u8) {
+        self.volume = volume;
     }
 
     fn process_audio(
         output_buffer: &[u16],
         static_buffer: LimitingArrayReadTarget,
+        volume: u8,
     ) -> LimitingArrayReadTarget {
         let output = static_buffer.new_max_read((output_buffer.len() * 1) as u32);
-        output.array[..output_buffer.len()].clone_from_slice(output_buffer);
+        for (i, &sample) in output_buffer.iter().enumerate() {
+            let scaled = ((sample as u32 * volume as u32) / 255) as u16;
+            output.array[i] = scaled;
+        }
         output
     }
 }
@@ -119,13 +129,13 @@ where
         match dma_state {
             DmaState::IDLE(transfer) => {
                 let second_buffer = core::mem::replace(&mut self.second_buffer, None).unwrap();
-                let second_buffer = Self::process_audio(output_buffer, second_buffer);
+                let second_buffer = Self::process_audio(output_buffer, second_buffer, self.volume);
                 let new_transfer = transfer.read_next(second_buffer);
                 self.dma_state = Some(DmaState::RUNNING(new_transfer));
             }
             DmaState::RUNNING(transfer) => {
                 let dms = transfer.wait();
-                let second_buffer = Self::process_audio(output_buffer, dms.0);
+                let second_buffer = Self::process_audio(output_buffer, dms.0, self.volume);
                 let new_transfer = dms.1.read_next(second_buffer);
                 self.dma_state = Some(DmaState::RUNNING(new_transfer));
             }
