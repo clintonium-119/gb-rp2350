@@ -94,7 +94,7 @@ where
             dma_state: Some(DmaState::IDLE(cfg)),
             second_buffer: Some(from2),
             sample_rate: sample_rate,
-            volume: 1, // 255 is max volume
+            volume: 1, // 3 = 45% volume
         }
     }
 
@@ -109,7 +109,16 @@ where
     ) -> LimitingArrayReadTarget {
         let output = static_buffer.new_max_read((output_buffer.len() * 1) as u32);
         for (i, &sample) in output_buffer.iter().enumerate() {
-            let scaled = ((sample as u32 * volume as u32) / 255) as u16;
+            // Use integer math for scaling to avoid rounding errors and no_std issues
+            let scaled = match volume {
+                0 => 0,
+                1 => (sample as u32 * 10 / 100) as u16,   // 10%
+                2 => (sample as u32 * 25 / 100) as u16,   // 25%
+                3 => (sample as u32 * 45 / 100) as u16,   // 45%
+                4 => (sample as u32 * 70 / 100) as u16,   // 70%
+                5 => sample,                              // 100%
+                _ => sample,
+            };
             output.array[i] = scaled;
         }
         output
