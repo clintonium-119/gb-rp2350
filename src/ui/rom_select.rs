@@ -11,7 +11,7 @@ use embedded_graphics::{
 use embedded_hal::digital::InputPin;
 use rp235x_hal::timer::TimerDevice;
 
-use crate::{util::LimitedViewList, RENDER_HEIGHT, RENDER_WIDTH, RENDER_LEFT_PADDING};
+use crate::{util::LimitedViewList, RENDER_HEIGHT, RENDER_WIDTH, RENDER_LEFT_PADDING, RENDER_TOP_PADDING};
 
 use super::ListDisplay;
 
@@ -43,7 +43,7 @@ pub fn select_rom<'a, D: DrawTarget<Color = Rgb565>, TD: TimerDevice>(
     .draw(display)?;
 
     let list = ListDisplay::new(
-        Point::new(RENDER_LEFT_PADDING as i32, 20),   // Starting position
+        Point::new(RENDER_LEFT_PADDING as i32, RENDER_TOP_PADDING as i32 + 20),   // Starting position
         RENDER_WIDTH as i32, // Width in pixels
         20,
         5,

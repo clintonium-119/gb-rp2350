@@ -549,8 +549,8 @@ fn load_rom<
     let mut buffer = [0u8; FLASH_SECTOR_SIZE as usize];
 
     let mut loading_screen = LoadingScreen::new(
-        Point::new(0, 0),
-        Size::new(DISPLAY_HEIGHT as u32, DISPLAY_WIDTH as u32),
+        Point::new(RENDER_LEFT_PADDING as i32, RENDER_TOP_PADDING as i32),
+        Size::new(RENDER_WIDTH as u32, RENDER_HEIGHT as u32),
         rom_name.to_string(),
     );
     if let Err(_) = loading_screen.draw(display, 0) {};
@@ -701,7 +701,7 @@ fn load_rom_to_psram<
     let mut buffer = [0u8; ROM_READ_BUFFER_SIZE as usize];
 
     let mut loading_screen = LoadingScreen::new(
-        Point::new(0, 0),
+        Point::new(RENDER_LEFT_PADDING as i32, RENDER_TOP_PADDING as i32),
         Size::new(RENDER_WIDTH as u32, RENDER_HEIGHT as u32),
         rom_name.to_string(),
     );
