@@ -22,7 +22,7 @@ use embedded_graphics::prelude::*;
 use embedded_graphics::prelude::{DrawTarget, Point};
 
 use embedded_hal::digital::OutputPin;
-use ui::rom_select::select_rom;
+use ui::rom_select::{select_rom, RomMenuAction};
 
 use embedded_sdmmc::sdcard::AcquireOpts;
 use gb_core::hardware::boot_rom::Bootrom;
@@ -387,9 +387,8 @@ fn main() -> ! {
         &mut a_button,
         &mut start_button,
     );
-
     match selected_rom {
-        Some(idx) => {
+        RomMenuAction::LoadFromSd(idx) => {
             // Load ROM from SD card as before
             let name = rom_list[idx].clone();
             defmt::info!("Menu END: {}", defmt::Display2Format(&name));
@@ -441,38 +440,101 @@ fn main() -> ! {
             display.clear(Rgb565::BLACK).unwrap();
             run_game_boy(gameboy, display, button_handler, timer);
         }
-        None => {
-            // Boot from flash: skip SD card, use the ROM already in flash
-            defmt::info!("Booting from flash ROM");
+        RomMenuAction::LoadFromFlash(idx) => {
+            // // Start button pressed: try to boot from flash
+            // let flash_data = unsafe { FLASH_ROM_DATA.read() };
+            // const NINTENDO_LOGO: [u8; 48] = [
+            //     0xCE,0xED,0x66,0x66,0xCC,0x0D,0x00,0x0B,0x03,0x73,0x00,0x83,0x00,0x0C,0x00,0x0D,
+            //     0x00,0x08,0x11,0x1F,0x88,0x89,0x00,0x0E,0xDC,0xCC,0x6E,0xE6,0xDD,0xDD,0xD9,0x99,
+            //     0xBB,0xBB,0x67,0x63,0x6E,0x0E,0xEC,0xCC,0xDD,0xDC,0x99,0x9F,0xBB,0xB9,0x33,0x3E
+            // ];
+            // let is_valid_rom = flash_data.len() > 0x133 && &flash_data[0x104..=0x133] == NINTENDO_LOGO;
+            let is_valid_rom = true;
 
-            #[cfg(feature = "flash_rom")]
-            let cartridge = {
-                let rom_manager = gameboy::static_rom::StaticRomManager::new(
-                    FLASH_ROM_DATA.read(),
-                    volume_mgr,
-                    timer,
-                    |bd| bd.mark_card_uninit(),
+            if is_valid_rom {
+                // Boot from flash: skip SD card, use the ROM already in flash
+                defmt::info!("Booting from flash ROM");
+
+                #[cfg(feature = "flash_rom")]
+                let cartridge = {
+                    let rom_manager = gameboy::static_rom::StaticRomManager::new(
+                        FLASH_ROM_DATA.read(),
+                        volume_mgr,
+                        timer,
+                        |bd| bd.mark_card_uninit(),
+                    );
+                    let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
+                    gb_rom.into_cartridge()
+                };
+
+                let gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
+
+                let button_handler = InputButtonMapper::new(
+                    &mut a_button,
+                    &mut b_button,
+                    &mut start_button,
+                    &mut select_button,
+                    &mut up_button,
+                    &mut down_button,
+                    &mut left_button,
+                    &mut right_button,
                 );
-                let gb_rom = gb_core::hardware::rom::Rom::from_bytes(rom_manager);
-                gb_rom.into_cartridge()
-            };
+                led_pin.set_high().unwrap();
 
-            let gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
+                display.clear(Rgb565::BLACK).unwrap();
+                run_game_boy(gameboy, display, button_handler, timer);
+            } else {
+                // No valid ROM in flash: flash the currently hovered ROM and run it
+                let name = rom_list[idx].clone();
+                defmt::info!("Menu END: {}", defmt::Display2Format(&name));
 
-            let button_handler = InputButtonMapper::new(
-                &mut a_button,
-                &mut b_button,
-                &mut start_button,
-                &mut select_button,
-                &mut up_button,
-                &mut down_button,
-                &mut left_button,
-                &mut right_button,
-            );
-            led_pin.set_high().unwrap();
+                #[cfg(feature = "psram_rom")]
+                let cartridge = {
+                    defmt::info!("Using PRSAM");
 
-            display.clear(Rgb565::BLACK).unwrap();
-            run_game_boy(gameboy, display, button_handler, timer);
+                    let _ =
+                        pin_select!(pins, env!("PIN_PSRAM_CS")).into_function::<hal::gpio::FunctionXipCs1>();
+                    let psram_size = hardware::psram::psram_init(
+                        clocks.peripheral_clock.freq().to_Hz(),
+                        &pac.QMI,
+                        &pac.XIP_CTRL,
+                    );
+
+                    let psram = unsafe {
+                        const PSRAM_ADDRESS: usize = 0x11000000;
+                        let ptr = PSRAM_ADDRESS as *mut u8; // Using u8 for byte array
+                        let slice: &'static mut [u8] =
+                            alloc::slice::from_raw_parts_mut(ptr, psram_size as usize);
+                        slice
+                    };
+
+                    let cartridge = load_rom_to_psram(&mut display, volume_mgr, timer, &name, psram, |db| {
+                        db.mark_card_uninit();
+                    });
+                    cartridge
+                };
+                #[cfg(not(feature = "psram_rom"))]
+                let cartridge = load_rom(&mut display, volume_mgr, &name, timer, |bd| {
+                    bd.mark_card_uninit();
+                });
+
+                let gameboy = GameBoy::create(screen, cartridge, boot_rom, Box::new(i2s_interface));
+
+                let button_handler = InputButtonMapper::new(
+                    &mut a_button,
+                    &mut b_button,
+                    &mut start_button,
+                    &mut select_button,
+                    &mut up_button,
+                    &mut down_button,
+                    &mut left_button,
+                    &mut right_button,
+                );
+                led_pin.set_high().unwrap();
+
+                display.clear(Rgb565::BLACK).unwrap();
+                run_game_boy(gameboy, display, button_handler, timer);
+            }
         }
     }
 

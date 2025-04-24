@@ -15,6 +15,11 @@ use crate::{util::LimitedViewList, RENDER_HEIGHT, RENDER_WIDTH, RENDER_LEFT_PADD
 
 use super::ListDisplay;
 
+pub enum RomMenuAction {
+    LoadFromSd(usize),    // A pressed
+    LoadFromFlash(usize), // Start pressed, with hovered index
+}
+
 #[inline(always)]
 pub fn select_rom<D, B, S>(
     display: &mut D,
@@ -24,7 +29,7 @@ pub fn select_rom<D, B, S>(
     down_button: &mut B,
     a_button: &mut B,
     start_button: &mut B,
-) -> Option<usize>
+) -> RomMenuAction
 where
     D: DrawTarget<Color = Rgb565>,
     B: InputPin<Error = Infallible>,
@@ -33,7 +38,7 @@ where
     let mut selected_rom = 0u8;
     let mut button_clicked = false;
 
-    display.clear(Rgb565::CSS_GRAY).ok()?;
+    display.clear(Rgb565::CSS_GRAY);
 
     let title_style = MonoTextStyleBuilder::new()
         .font(&FONT_6X12)
@@ -46,8 +51,7 @@ where
         title_style,
         Baseline::Middle,
     )
-    .draw(display)
-    .ok()?;
+    .draw(display);
 
     let list = ListDisplay::new(
         Point::new(RENDER_LEFT_PADDING as i32, RENDER_TOP_PADDING as i32 + 20),   // Starting position
@@ -57,16 +61,16 @@ where
     );
     let max_items_to_display = ((RENDER_HEIGHT / (20 + 5)) as usize) - 1;
     let mut items = LimitedViewList::new(rom_list, max_items_to_display);
-    list.draw(items.iter(), 0, display).ok()?;
+    list.draw(items.iter(), 0, display);
     loop {
         if up_button.is_low().unwrap() && !button_clicked {
             if selected_rom != 0 {
                 selected_rom = selected_rom - 1;
                 defmt::info!("up_button Start redraw: {}", selected_rom);
-                list.draw(items.iter(), selected_rom, display).ok()?;
+                list.draw(items.iter(), selected_rom, display);
             } else {
                 items.prev();
-                list.draw(items.iter(), selected_rom, display).ok()?;
+                list.draw(items.iter(), selected_rom, display);
             }
             button_clicked = true;
         }
@@ -74,18 +78,18 @@ where
             if selected_rom + 1 < items.max() as u8 {
                 selected_rom = selected_rom + 1;
                 defmt::info!("down_button Start redraw: {}", selected_rom);
-                list.draw(items.iter(), selected_rom, display).ok()?;
+                list.draw(items.iter(), selected_rom, display);
             } else if (items.len() - items.current_cursor()) > items.max() {
                 items.next();
-                list.draw(items.iter(), selected_rom, display).ok()?;
+                list.draw(items.iter(), selected_rom, display);
             }
             button_clicked = true;
         }
         if a_button.is_low().unwrap() {
-            return Some(items.current_cursor() + selected_rom as usize);
+            return RomMenuAction::LoadFromSd(items.current_cursor() + selected_rom as usize);
         }
         if start_button.is_low().unwrap() {
-            return None;
+            return RomMenuAction::LoadFromFlash(items.current_cursor() + selected_rom as usize);
         }
 
         if down_button.is_high().unwrap() && up_button.is_high().unwrap() {
