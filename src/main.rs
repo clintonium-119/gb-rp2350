@@ -601,9 +601,9 @@ pub static PICOTOOL_ENTRIES: [hal::binary_info::EntryAddr; 5] = [
 const ROM_FLASH_SIZE: usize = 1024 * 1024;
 
 #[cfg(feature = "flash_rom")]
-#[link_section = ".rodata"]
+#[link_section = ".rom_storage"]
 static FLASH_ROM_DATA: hardware::flash::FlashBlock<ROM_FLASH_SIZE> = hardware::flash::FlashBlock {
-    data: core::cell::UnsafeCell::new([0x55u8; ROM_FLASH_SIZE]),
+    data: core::cell::UnsafeCell::new([0xFFu8; ROM_FLASH_SIZE]),
 };
 
 #[inline(never)]
