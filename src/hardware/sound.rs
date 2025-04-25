@@ -27,7 +27,7 @@ pub struct I2sPioInterface<CH1: SingleChannel, CH2: SingleChannel, P: PIOExt, SM
     dma_state: Option<DmaState<CH1, CH2, LimitingArrayReadTarget, P, SM>>,
     second_buffer: Option<LimitingArrayReadTarget>,
     sample_rate: u32,
-    volume: u8, // 0 = mute, 255 = max
+    volume: u8, // 0 = mute, 1 = quietest, 8 = loudest
 }
 
 impl<CH1, CH2, P, SM> I2sPioInterface<CH1, CH2, P, SM>
@@ -94,27 +94,45 @@ where
             dma_state: Some(DmaState::IDLE(cfg)),
             second_buffer: Some(from2),
             sample_rate: sample_rate,
-            volume: 5,
+            volume: 4, // Default volume (mid-range 1-8, lower is quieter)
         }
     }
 
     pub fn set_volume(&mut self, volume: u8) {
-        self.volume = volume;
+        // Clamp volume to 0-8 range
+        self.volume = volume.min(8);
     }
 
     fn process_audio(
         output_buffer: &[u16],
         static_buffer: LimitingArrayReadTarget,
-        volume: u8, // 0..=100, where 0 = full volume, 100 = mute
+        volume: u8, // 0 = mute, 1 = loudest, 8 = quietest
     ) -> LimitingArrayReadTarget {
         let output = static_buffer.new_max_read((output_buffer.len() * 1) as u32);
-        let scale = 100u8.saturating_sub(volume); // invert: 0 = loudest, 100 = mute
+
+        // Calculate shift amount based on volume.
+        // Volume 0 = mute (shift 16).
+        // Volume 1 (loudest) -> shift 0.
+        // Volume 8 (quietest) -> shift 7.
+        // Maps volume range [1, 8] to shift range [0, 7].
+        let shift = if volume > 0 {
+            let v = volume.min(8); // Ensure volume is within 1-8
+            // Calculate shift: v - 1. Max shift is 7 (for v=8), min shift is 0 (for v=1).
+            v.saturating_sub(1).min(7)
+        } else {
+            16 // shift 16 for mute
+        };
+
         for (i, &sample) in output_buffer.iter().enumerate() {
-            let signed = (sample ^ 0x8000) as i16;
-            let scaled = if scale == 0 {
-                0
+            let scaled = if volume == 0 {
+                0x8000 // Mute: output silence (center value for signed 16-bit audio)
             } else {
-                (((signed as i32 * scale as i32) / 100) as i16 as u16) ^ 0x8000
+                // Convert unsigned sample (center 0x8000) to signed i16
+                let signed = (sample ^ 0x8000) as i16;
+                // Apply volume scaling by right-shifting
+                let scaled_signed = signed >> shift;
+                // Convert back to unsigned u16
+                (scaled_signed as u16) ^ 0x8000
             };
             output.array[i] = scaled;
         }
@@ -155,12 +173,7 @@ where
     fn underflowed(&self) -> bool {
         // let underflowed = match &self.dma_state {
         //     Some(dma_state) => match dma_state {
-        //         DmaState::IDLE(..) => true,
-        //         DmaState::RUNNING(transfer) => transfer.is_done(),
-        //     },
-        //     None => false,
-        // };
-
+        //         DmaState::
         true
     }
 }
